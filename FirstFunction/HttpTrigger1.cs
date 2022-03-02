@@ -17,6 +17,11 @@ using Newtonsoft.Json;
 //
 // Greate course that is an overview of functions
 // https://www.youtube.com/watch?v=eS5GJkI69Qg&list=PLMWaZteqtEaLRsSynAsaS_aLzDPBUU4CV
+//
+// Setting up environment variables video
+// https://www.youtube.com/watch?v=7SYwAjmdFA4
+// Define the "Local" environment variables
+// https://eugenechiang.azurewebsites.net/2021/03/26/azure-function-get-environment-variable-using-local-settings-json/#:~:text=To%20get%20an%20environment%20variable%20or%20an%20app,works%20both%20locally%20with%20local.settings.json%20and%20in%20Azure.
 
 // user:     sqluser
 // Password: pswd1234!
@@ -58,7 +63,8 @@ namespace My.Function
 
         public static string getData(string name, ILogger log)
         {
-            string connStr = "Server=tcp:rickodb1.database.windows.net,1433;Initial Catalog=db1;Persist Security Info=False;User ID=sqluser;Password=pswd1234!;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;";
+            string connStr = System.Environment.GetEnvironmentVariable("CONNECETION_STRING", EnvironmentVariableTarget.Process);
+            //"Server=tcp:rickodb1.database.windows.net,1433;Initial Catalog=db1;Persist Security Info=False;User ID=sqluser;Password=pswd1234!;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;";
             string query = "SELECT * FROM dbo.YoutubeLinks WHERE name=@Name FOR JSON AUTO; --, Without_Array_Wrapper";
 
             DataTable dt = new DataTable();
