@@ -66,19 +66,32 @@ using Newtonsoft.Json;
     https://www.youtube.com/watch?v=uST0CyqRIHA
 
     https://www.youtube.com/watch?v=XaS_p5D1llg using OidcAuthentication need to study further
+
+    jason post with ajax:
+    https://www.c-sharpcorner.com/UploadFile/2ed7ae/jsonresult-type-in-mvc/
+
+    Jason and SQL examples for returning json
+    https://docs.microsoft.com/en-us/answers/questions/142700/for-json-outputs-in-multiple-rows.html
+
+    Jason multiple rows example
+    https://stackoverflow.com/questions/20183395/how-to-parse-multiple-records-in-json
 */
 using System.Collections.Generic;
 
 //using Microsoft.Azure.WebJobs.Extensions.Storage;
+using System.Text;
+using System.Threading;
 using System.Data;
 using System.Data.SqlClient;
+using System.Runtime.Serialization;
+using System.Runtime.Serialization.Json;
 namespace My.Function
 {
     public static class HttpTrigger1
     {
-        [FunctionName("Options1")]
+        [FunctionName("getOptions")]
         public static async Task<IActionResult> getOptions(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "options", Route = "")] HttpRequest req, 
+            [HttpTrigger(AuthorizationLevel.Anonymous, "options", Route = "options")] HttpRequest req, 
             //[Queue("outputqueue"), StorageAccount("UseDevelopmentStorage")] ICollector<string> msg,
             ILogger log
             )
@@ -93,8 +106,8 @@ namespace My.Function
             return new OkObjectResult(responseMessage);
         }
 
-        [FunctionName("HttpTrigger1")]
-        public static async Task<IActionResult> run1(
+        [FunctionName("getName")]
+        public static async Task<IActionResult> getName(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "read")] HttpRequest req, 
             //[Queue("outputqueue"), StorageAccount("UseDevelopmentStorage")] ICollector<string> msg,
             ILogger log
@@ -131,8 +144,8 @@ namespace My.Function
             return new OkObjectResult(responseMessage);
         }
 
-        [FunctionName("HttpTrigger2")]
-        public static async Task<IActionResult> run2(
+        [FunctionName("GetAllNames")]
+        public static async Task<IActionResult> GetAllNames(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "all")] HttpRequest req, 
             //[Queue("outputqueue"), StorageAccount("UseDevelopmentStorage")] ICollector<string> msg,
             ILogger log
@@ -150,26 +163,116 @@ namespace My.Function
             return new OkObjectResult(responseMessage);
         }
 
-        public static void getData(ref string result, string name, ILogger log)
+        [FunctionName("youtubeLinks")]
+        public static async Task<IActionResult> PutNames(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "putNames")] HttpRequest req, 
+            //[Queue("outputqueue"), StorageAccount("UseDevelopmentStorage")] ICollector<string> msg,
+            ILogger log,
+            CancellationToken cancellationToken
+            )
+        {
+            log.LogInformation("Put Name Record.");
+
+            int cntr = 0, jsonRows = 0;
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            YoutubeLink[] youtubeLinks = null;
+
+            if (string.IsNullOrEmpty(requestBody) || requestBody == "")
+            {
+                log.LogWarning("must provide a body to search for.");
+                return new BadRequestObjectResult("Expecting the body to contain a value.");
+            }
+
+            try
+            {
+                byte[] bytes = Encoding.UTF8.GetBytes(requestBody);
+                using(MemoryStream mStream = new MemoryStream(bytes))
+                {
+                    DataContractJsonSerializer serializer = new DataContractJsonSerializer(typeof(YoutubeLink[]));
+                    youtubeLinks = (YoutubeLink[])serializer.ReadObject(mStream);
+                }
+                jsonRows = youtubeLinks.Length;
+            }
+            catch (Exception e)
+            {
+                log.LogError(e.ToString());
+            }
+
+            await Task.Run(() => putData(ref cntr, youtubeLinks, log));
+
+            string responseMessage = (cntr.ToString() + " out of " + jsonRows.ToString() + " Record(s) Written");
+            return new OkObjectResult(responseMessage);
+        }
+        [DataContract]
+        public class YoutubeLink
+        {        
+             [DataMember]
+            public string name { get; set; }
+            [DataMember]
+            public string url { get; set; }
+        }
+
+
+        public static string connect()
         {
             string connStr = System.Environment.GetEnvironmentVariable("connection_string", EnvironmentVariableTarget.Process);
             string password = System.Environment.GetEnvironmentVariable("CustomCONNSTR_password", EnvironmentVariableTarget.Process);
             string user = System.Environment.GetEnvironmentVariable("CustomCONNSTR_user", EnvironmentVariableTarget.Process);
-            
-            string query;
 
-            //"Server=tcp:rickodb1.database.windows.net,1433;Initial Catalog=db1;Persist Security Info=False;User ID=sqluser;Password=pswd1234!;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;";
+            return connStr.Replace("{user}", user).Replace("{password}", password);
+        }
+        public static void putData(ref int cnt, YoutubeLink[] ytls, ILogger log)
+        {
+            string query = "INSERT INTO YoutubeLinks(name, url) VALUES(@Name, @Url)";
+            cnt = 0;
+            try
+            {
+                using (SqlConnection connection = new SqlConnection(connect()))
+                {
+                    connection.Open();
+                    foreach (YoutubeLink ytl in ytls)
+                    {
+                        try
+                        {
+                            SqlCommand command = new SqlCommand(query, connection);
+                            command.Parameters.AddWithValue("@Name", ytl.name);
+                            command.Parameters.AddWithValue("@Url", ytl.url);
+                            command.ExecuteNonQuery();
+                            cnt++;
+                        }
+                        catch (Exception e)
+                        {
+                            log.LogError(e.ToString());
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                log.LogError(e.ToString());
+            }       
+
+
+
+        }
+
+        public static void getData(ref string result, string name, ILogger log)
+        {           
+            string query;
             
             if (name == string.Empty)
-                query = "SELECT * FROM dbo.YoutubeLinks FOR JSON AUTO";
+            {
+                query = "SELECT * FROM dbo.YoutubeLinks FOR JSON AUTO, ROOT('All')";
+            }
             else
+            {
                 query = "SELECT * FROM dbo.YoutubeLinks WHERE name=@Name FOR JSON AUTO; --, Without_Array_Wrapper";
+            }
 
             DataTable dt = new DataTable();
             try
             {
-                connStr = connStr.Replace("{user}", user).Replace("{password}", password);
-                using (SqlConnection connection = new SqlConnection(connStr))
+                using (SqlConnection connection = new SqlConnection(connect()))
                 {
                     connection.Open();
                     SqlCommand command = new SqlCommand(query, connection);
