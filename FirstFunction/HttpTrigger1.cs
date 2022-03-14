@@ -202,7 +202,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Primitives; // add FirstOrDefault 
 
-using Microsoft.Azure.WebJobs.Extensions.Storage;
+//using Microsoft.Azure.WebJobs.Extensions.Storage;
 using System.Text;
 using System.Threading;
 using System.Data;
@@ -211,6 +211,8 @@ using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 
 using System.Security.Claims;
+
+using parseJSON;
 namespace My.Function
 {
     public static class HttpTrigger1
@@ -221,7 +223,6 @@ namespace My.Function
             // 5. Authorization settings for at the function app and function level.
             [HttpTrigger(AuthorizationLevel.Function, "options", Route = "options/{test}")] HttpRequest req, 
             string test,
-            //[Queue("outputqueue"), StorageAccount("UseDevelopmentStorage")] ICollector<string> msg,
             ILogger log
             )
         {
@@ -274,9 +275,9 @@ namespace My.Function
 
             //1. These are examples of how to interrogate environment variables and connection strings from the azure environment
             //3. These first variable connStr is configured on the Azure side to access the vault
-            string connStr = System.Environment.GetEnvironmentVariable("connection_string", EnvironmentVariableTarget.Process);
-            string password = System.Environment.GetEnvironmentVariable("CustomCONNSTR_password", EnvironmentVariableTarget.Process);
-            string user = System.Environment.GetEnvironmentVariable("CustomCONNSTR_user", EnvironmentVariableTarget.Process);
+            string connStr = Environment.GetEnvironmentVariable("connection_string", EnvironmentVariableTarget.Process);
+            string password = Environment.GetEnvironmentVariable("CustomCONNSTR_password", EnvironmentVariableTarget.Process);
+            string user = Environment.GetEnvironmentVariable("CustomCONNSTR_user", EnvironmentVariableTarget.Process);
 
             string responseMessage = (string.IsNullOrEmpty(result) || result.Trim() == "")
                 ? $"This HTTP triggered function executed successfully. However, no data as returned.\nconnStr: {connStr}\npassword: {password}\nuser: {user}"
@@ -291,7 +292,6 @@ namespace My.Function
         [FunctionName("GetAllNames")]
         public static async Task<IActionResult> GetAllNames(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "all")] HttpRequest req, 
-            //[Queue("outputqueue"), StorageAccount("UseDevelopmentStorage")] ICollector<string> msg,
             ILogger log
             )
         {
@@ -310,10 +310,79 @@ namespace My.Function
             return new OkObjectResult(responseMessage);
         }
 
+        [FunctionName("LargeDataSet")]
+        public static async Task<IActionResult> LargeDataSet(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "largeDataSet")] HttpRequest req, 
+            ILogger log,
+            CancellationToken cancellationToken
+            )
+        {
+            log.LogInformation("test JSON.");
+
+            using (StreamReader sr = new StreamReader(req.Body))
+                 using(JsonReader reader = new JsonTextReader(sr))
+                 {
+                     int ary = 0, cnt = 0;
+                    List<Dictionary<string, object>> dicts = new List<Dictionary<string, object>>();
+
+                    while (await reader.ReadAsync())
+                    {
+                        switch(reader.TokenType)
+                        {
+                            case JsonToken.StartArray:
+                                ary++;
+                                cnt=-1;
+                                dicts.Clear();
+                                break;
+                            case JsonToken.StartObject:
+                                Dictionary<string, object> dict = new Dictionary<string, object>();
+                                dicts.Add(dict);
+                                cnt++;
+                                break;
+                            case JsonToken.PropertyName:
+                                string fld = (string)reader.Value;
+                                if (await reader.ReadAsync())
+                                    dicts[cnt].Add(fld, Convert.ChangeType(reader.Value,reader.ValueType));
+                                break;
+                        }
+                    }
+            }
+
+
+            return new OkObjectResult("");
+        }
+
+        [FunctionName("DataSet")]
+        public static async Task<IActionResult> DataSet(
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "dataSet")] HttpRequest req, 
+            ILogger log,
+            CancellationToken cancellationToken
+            )
+        {     
+            log.LogInformation("test JSON.");
+            
+            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            
+            var token = Newtonsoft.Json.Linq.JToken.Parse(requestBody);
+            if (token is Newtonsoft.Json.Linq.JArray)
+            {
+                Newtonsoft.Json.Linq.JArray ja = Newtonsoft.Json.Linq.JArray.Parse(requestBody);
+                object[] jaA = JsonConversionExtensions.ToArray(ja);
+            }
+            else
+            {
+                Newtonsoft.Json.Linq.JObject ob = Newtonsoft.Json.Linq.JObject.Parse(requestBody);
+                IDictionary<string, object> obA = JsonConversionExtensions.ToDictionary(ob);
+            }
+
+            return new OkObjectResult("");
+        }      
+
+
+
         [FunctionName("youtubeLinks")]
         public static async Task<IActionResult> PutNames(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "putNames")] HttpRequest req, 
-            //[Queue("outputqueue"), StorageAccount("UseDevelopmentStorage")] ICollector<string> msg,
             ILogger log,
             CancellationToken cancellationToken
             )
@@ -366,9 +435,9 @@ namespace My.Function
         // 4. Setting SQL ODBC connection for Azure.
         public static string connect()
         {
-            string connStr = System.Environment.GetEnvironmentVariable("connection_string", EnvironmentVariableTarget.Process);
-            string password = System.Environment.GetEnvironmentVariable("CustomCONNSTR_password", EnvironmentVariableTarget.Process);
-            string user = System.Environment.GetEnvironmentVariable("CustomCONNSTR_user", EnvironmentVariableTarget.Process);
+            string connStr = Environment.GetEnvironmentVariable("connection_string", EnvironmentVariableTarget.Process);
+            string password = Environment.GetEnvironmentVariable("CustomCONNSTR_password", EnvironmentVariableTarget.Process);
+            string user = Environment.GetEnvironmentVariable("CustomCONNSTR_user", EnvironmentVariableTarget.Process);
 
             return connStr.Replace("{user}", user).Replace("{password}", password);
         }
@@ -408,7 +477,6 @@ namespace My.Function
                 log.LogError(e.ToString());
             }       
         }
-
         public static void getData(ref string result, string name, ILogger log)
         {           
             string query;
