@@ -95,7 +95,13 @@ III. Coding examples
     PostgreSQL: PostgreSQL_<name>
     Custom:     Custom_<name>
 
-    2. Use the following site to install SqlClient to make ODBC connection
+
+    2. Code for interrogating the signed on account.
+    The only code the worked for this was interrogating the HTTPRequest.HttpContext.User
+    https://levelup.gitconnected.com/four-alternative-methods-to-get-user-identity-and-claims-in-a-net-azure-functions-app-df98c40424bb
+
+
+    3. Use the following site to install SqlClient to make ODBC connection
     https://chanmingman.wordpress.com/2021/12/24/add-system-data-sqlclient-using-visual-studio-code/
 
     - Basic tutorial to connect to databases: https://www.youtube.com/watch?v=2qW1zsuJ9s0
@@ -103,7 +109,7 @@ III. Coding examples
     https://www.c-sharpcorner.com/article/develop-a-rest-api-with-azure-functions-and-sql/
 
 
-    3. Using Azure key vault: These are added to an environment variable as: 
+    4. Using Azure key vault: These are added to an environment variable as: 
     @Microsoft.KeyVault(SecretUri=<Environment variable link>)
     for example:
     @Microsoft.KeyVault(SecretUri=https://osar-dev-vault.vault.azure.net/secrets/rickodb1-database-windows-net-sqluser/c8a3d66cd53d4f0c94b97888746e7c42)
@@ -113,7 +119,7 @@ III. Coding examples
     Final note on steps 2 - 3, these environment variables are NOT case sensitive. And it seems like Azure uses either all upper case or Camel case,
     so for our variables we will user lower case
 
-    4. Setting SQL ODBC connection for Azure.
+    5. Setting SQL ODBC connection for Azure.
     JSON and SQL examples for returning json
     https://docs.microsoft.com/en-us/answers/questions/142700/for-json-outputs-in-multiple-rows.html
 
@@ -123,7 +129,7 @@ III. Coding examples
     Password: pswd1234!
 
 
-    5. Authorization settings for at the function app and function level.
+    6. Authorization settings for at the function app and function level.
     These keys can be sent via:
     query string: code=<API_KEY>
     HTTP Header: x-functions-key
@@ -173,7 +179,7 @@ III. Coding examples
       
       Add to csproj file
       <PackageReference Include="Microsoft.Azure.WebJobs.Extensions.Storage" Version="5.0.0"/> to FirstFunction.csproj
-
+   
 
     8. This is setting up a custom security using a environment variable, we can define these keys at the function level or the vault level.
     If defined at the vault level each access will 
@@ -188,6 +194,11 @@ III. Coding examples
 
 
 IV. Future settings
+    https://www.codeproject.com/Articles/5268371/Cinchoo-ETL-JSON-Reader
+
+    Mewtonsoft documentation...
+    https://www.newtonsoft.com/json/help/html/T_Newtonsoft_Json_Linq_JToken.htm
+
     video on securely calling function from website will watch more but may need 
     https://www.youtube.com/watch?v=uST0CyqRIHA
 
@@ -196,23 +207,26 @@ IV. Future settings
 
     C# code to read a key vault
     https://www.codeproject.com/Tips/1430794/Using-Csharp-NET-to-Read-and-Write-from-Azure-Key
+
+    C# code to process bulk uploads
+    https://social.technet.microsoft.com/wiki/contents/articles/52491.c-working-with-t-sql-merge-statement.aspx
 */
 
-using System.Collections.Generic;
-using System.Linq;
-using Microsoft.Extensions.Primitives; // add FirstOrDefault 
+using System.Collections.Generic; //Used for lists and dictionaries
+using System.Linq; // add FirstOrDefault 
+using Microsoft.Extensions.Primitives; // Used for StringValues
 
-//using Microsoft.Azure.WebJobs.Extensions.Storage;
-using System.Text;
-using System.Threading;
-using System.Data;
-using System.Data.SqlClient;
-using System.Runtime.Serialization;
-using System.Runtime.Serialization.Json;
+//using Microsoft.Azure.WebJobs.Extensions.Storage; // The training videos said this was needed for storage accounts
+using System.Text; // Used for Encoding to process byte streams for proecess 
+using System.Threading; // Used for the cancelation token
+using System.Data; // Used for the Datatable object to load records
+using System.Data.SqlClient; // Used for Any SQL Connections
+using System.Runtime.Serialization; // Used for DataContracts data definitions
+using System.Runtime.Serialization.Json; // Used for DataContract serializer
 
-using System.Security.Claims;
+using System.Security.Claims; //Used to get the data identity
 
-using parseJSON;
+using JsonTools; // pull in custom class for conversting JSON
 namespace My.Function
 {
     public static class HttpTrigger1
@@ -220,7 +234,7 @@ namespace My.Function
 
         [FunctionName("getOptions")]
         public static async Task<IActionResult> getOptions(
-            // 5. Authorization settings for at the function app and function level.
+            // 6. Authorization settings for at the function app and function level.
             [HttpTrigger(AuthorizationLevel.Function, "options", Route = "options/{test}")] HttpRequest req, 
             string test,
             ILogger log
@@ -232,7 +246,7 @@ namespace My.Function
             
             StringValues sv;
             req.Headers.TryGetValue("Authorize", out sv);
-            var st2 = sv.FirstOrDefault("");
+            string st2 = sv.FirstOrDefault("");
             if (st2 != test)
             {
                 log.LogError($"Not Authorized: Header.Authorization != '{test}'");
@@ -258,6 +272,7 @@ namespace My.Function
 
             string name = req.Query["name"];
 
+            // The boiler plate has the code awaiting the interrogation of the streamreader.
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             dynamic data = JsonConvert.DeserializeObject(requestBody);
             name = name ?? data?.name;
@@ -270,11 +285,12 @@ namespace My.Function
 
             string result = "";
             
-            //It is always a good idea to await results from any process if you want a return value.
+            //Due to the boiler plate having us await the streamreader, this function call to pull the data is also being written to 
+            // await the completion of the function call.
             await Task.Run(() => getData(ref result, name, log));
 
             //1. These are examples of how to interrogate environment variables and connection strings from the azure environment
-            //3. These first variable connStr is configured on the Azure side to access the vault
+            //4. These first variable connStr is configured on the Azure side to access the vault
             string connStr = Environment.GetEnvironmentVariable("connection_string", EnvironmentVariableTarget.Process);
             string password = Environment.GetEnvironmentVariable("CustomCONNSTR_password", EnvironmentVariableTarget.Process);
             string user = Environment.GetEnvironmentVariable("CustomCONNSTR_user", EnvironmentVariableTarget.Process);
@@ -299,6 +315,7 @@ namespace My.Function
 
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
 
+            //2. Code for interrogating the signed on account.
             ClaimsPrincipal claimIdentity = req.HttpContext.User;
             string user = claimIdentity.Identity.Name;
 
@@ -319,35 +336,45 @@ namespace My.Function
         {
             log.LogInformation("test JSON.");
 
-            using (StreamReader sr = new StreamReader(req.Body))
-                 using(JsonReader reader = new JsonTextReader(sr))
-                 {
-                     int ary = 0, cnt = 0;
-                    List<Dictionary<string, object>> dicts = new List<Dictionary<string, object>>();
-
-                    while (await reader.ReadAsync())
-                    {
-                        switch(reader.TokenType)
-                        {
-                            case JsonToken.StartArray:
-                                ary++;
-                                cnt=-1;
-                                dicts.Clear();
-                                break;
-                            case JsonToken.StartObject:
-                                Dictionary<string, object> dict = new Dictionary<string, object>();
-                                dicts.Add(dict);
-                                cnt++;
-                                break;
-                            case JsonToken.PropertyName:
-                                string fld = (string)reader.Value;
-                                if (await reader.ReadAsync())
-                                    dicts[cnt].Add(fld, Convert.ChangeType(reader.Value,reader.ValueType));
-                                break;
-                        }
-                    }
+            System.Diagnostics.Stopwatch watch;
+            watch = System.Diagnostics.Stopwatch.StartNew();
+            DataTable dt = null;
+            await Task.Run(() => JsonConversions.jsonStreamToTable(out dt, req.Body, log));
+            if (dt == null || dt.Rows.Count == 0)
+            {
+                log.LogWarning("must provide a body to search for.");
+                return new BadRequestObjectResult("Expecting the body to contain a value.");
             }
+            watch.Stop();
+            Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
 
+            TableTools.logTable(dt, true);
+
+            string tbl = "YoutubeLinks2";
+            Dictionary<string, string> dc = new Dictionary<string, string>()
+            {{"namester", "name"},
+             {"cntrnum", "cntr"},
+             {"BLOCK", null}
+            };
+
+            using (SqlConnection con = new SqlConnection(connect()))
+            {
+                SqlBulkCopy objbulk = new SqlBulkCopy(con);
+                objbulk.DestinationTableName = tbl;
+                objbulk.BulkCopyTimeout = 600;
+
+                foreach (DataColumn col in dt.Columns)
+                {
+                    string value = string.Empty;
+                    string colName = col.ColumnName;
+                    if (!dc.TryGetValue(colName, out value))
+                        value = col.ColumnName;
+                    if (value is not null)
+                        objbulk.ColumnMappings.Add(colName, value);
+                }
+                con.Open();
+                await objbulk.WriteToServerAsync(dt);
+            }
 
             return new OkObjectResult("");
         }
@@ -360,25 +387,24 @@ namespace My.Function
             )
         {     
             log.LogInformation("test JSON.");
-            
+
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            
-            var token = Newtonsoft.Json.Linq.JToken.Parse(requestBody);
-            if (token is Newtonsoft.Json.Linq.JArray)
+            if (string.IsNullOrEmpty(requestBody) || requestBody == "")
             {
-                Newtonsoft.Json.Linq.JArray ja = Newtonsoft.Json.Linq.JArray.Parse(requestBody);
-                object[] jaA = JsonConversionExtensions.ToArray(ja);
+                log.LogWarning("must provide a body to search for.");
+                return new BadRequestObjectResult("Expecting the body to contain a value.");
             }
-            else
-            {
-                Newtonsoft.Json.Linq.JObject ob = Newtonsoft.Json.Linq.JObject.Parse(requestBody);
-                IDictionary<string, object> obA = JsonConversionExtensions.ToDictionary(ob);
-            }
+
+
+            System.Diagnostics.Stopwatch watch;
+            watch = System.Diagnostics.Stopwatch.StartNew();
+            DataTable dt = JsonConversions.stringToTable(requestBody, log);
+            //TableTools.logTable(dt);
+            watch.Stop();
+            Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
 
             return new OkObjectResult("");
         }      
-
-
 
         [FunctionName("youtubeLinks")]
         public static async Task<IActionResult> PutNames(
@@ -391,14 +417,15 @@ namespace My.Function
 
             int cntr = 0, jsonRows = 0;
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            YoutubeLink[] youtubeLinks = null;
-
             if (string.IsNullOrEmpty(requestBody) || requestBody == "")
             {
                 log.LogWarning("must provide a body to search for.");
                 return new BadRequestObjectResult("Expecting the body to contain a value.");
             }
-
+            
+            System.Diagnostics.Stopwatch watch;
+            watch = System.Diagnostics.Stopwatch.StartNew();
+            YoutubeLink[] youtubeLinks = null;
             try
             {
                 byte[] bytes = Encoding.UTF8.GetBytes(requestBody);
@@ -413,6 +440,8 @@ namespace My.Function
             {
                 log.LogError(e.ToString());
             }
+            watch.Stop();
+            Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
 
             //It is always a good idea to await results from any process if you want a return value. (We are returning the count...)
             await Task.Run(() => putData(ref cntr, jsonRows, youtubeLinks, log, cancellationToken));
@@ -425,14 +454,16 @@ namespace My.Function
         public class YoutubeLink
         {      
              // for newtonsoft use JsonProperty
-             //[JsonProperty("namester")] 
-             [DataMember(Name = "namester")]
-            public string name { get; set; }
+             //[JsonProperty("name")] 
+             [DataMember(Name = "name")]
+            public string names { get; set; }
             [DataMember]
             public string url { get; set; }
+            [DataMember]
+            public int cntr { get; set; }
         }
 
-        // 4. Setting SQL ODBC connection for Azure.
+        // 5. Setting SQL ODBC connection for Azure.
         public static string connect()
         {
             string connStr = Environment.GetEnvironmentVariable("connection_string", EnvironmentVariableTarget.Process);
@@ -443,7 +474,7 @@ namespace My.Function
         }
         public static void putData(ref int cnt, int jsonRows, YoutubeLink[] ytls, ILogger log, CancellationToken cancellationToken)
         {
-            string query = "INSERT INTO YoutubeLinks(name, url) VALUES(@Name, @Url)";
+            string query = "INSERT INTO YoutubeLinks(names, url) VALUES(@Names, @Url)";
             cnt = 0;
             try
             {
@@ -460,7 +491,7 @@ namespace My.Function
                         try
                         {
                             SqlCommand command = new SqlCommand(query, connection);
-                            command.Parameters.AddWithValue("@Name", ytl.name);
+                            command.Parameters.AddWithValue("@Names", ytl.names);
                             command.Parameters.AddWithValue("@Url", ytl.url);
                             command.ExecuteNonQuery();
                             cnt++;
@@ -477,6 +508,8 @@ namespace My.Function
                 log.LogError(e.ToString());
             }       
         }
+
+        //3. Use the following site to install SqlClient to make ODBC connection
         public static void getData(ref string result, string name, ILogger log)
         {           
             string query;
