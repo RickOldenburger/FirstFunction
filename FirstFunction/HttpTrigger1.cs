@@ -210,6 +210,19 @@ IV. Future settings
 
     C# code to process bulk uploads
     https://social.technet.microsoft.com/wiki/contents/articles/52491.c-working-with-t-sql-merge-statement.aspx
+
+    Converts CSV to JSON
+    https://www.convertcsv.com/csv-to-json.htm
+
+    example of a merge query with a bulk upload
+    https://social.technet.microsoft.com/wiki/contents/articles/52491.c-working-with-t-sql-merge-statement.aspx
+
+    Logging levels
+    https://docs.microsoft.com/en-us/azure/azure-functions/functions-host-json?msclkid=bf500b90a64a11ec86d37c42962d7baf#logging
+
+    Task.WhenAll(...Tasks)
+    See video for how to catch all exceptions from this.
+    https://www.youtube.com/watch?v=gW19LaAYczI
 */
 
 using System.Collections.Generic; //Used for lists and dictionaries
@@ -227,11 +240,12 @@ using System.Runtime.Serialization.Json; // Used for DataContract serializer
 using System.Security.Claims; //Used to get the data identity
 
 using JsonTools; // pull in custom class for conversting JSON
+
+#pragma warning disable CS1998
 namespace My.Function
 {
-    public static class HttpTrigger1
+    public class HttpTrigger1
     {
-
         [FunctionName("getOptions")]
         public static async Task<IActionResult> getOptions(
             // 6. Authorization settings for at the function app and function level.
@@ -242,6 +256,11 @@ namespace My.Function
         {
             log.LogInformation("Get options.");
 
+            string pt = Environment.CurrentDirectory;
+            log.LogInformation("Starting Serilog: {pt}", pt);
+            
+            //Serilog.ILogger logger = new Serilog.LoggerConfiguration().WriteTo.Console().CreateLogger();
+            //log.
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             
             StringValues sv;
@@ -249,7 +268,7 @@ namespace My.Function
             string st2 = sv.FirstOrDefault("");
             if (st2 != test)
             {
-                log.LogError($"Not Authorized: Header.Authorization != '{test}'");
+                log.LogError("Not Authorized: Header.Authorization != '{test}'", test);
                 return new UnauthorizedResult();
                 //return new BadRequestObjectResult($"Not Authorized: Header.Authorization != '{test}'");
             }
@@ -265,7 +284,7 @@ namespace My.Function
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "read")] HttpRequest req, 
             //7. link storage account to azure function
             [Queue("outputqueue"), StorageAccount("AzureWebJobsStorage")] ICollector<string> msg,
-            ILogger log
+            Microsoft.Extensions.Logging.ILogger log
             )
         {
             log.LogInformation("Get Name Query.");
@@ -308,7 +327,7 @@ namespace My.Function
         [FunctionName("GetAllNames")]
         public static async Task<IActionResult> GetAllNames(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "all")] HttpRequest req, 
-            ILogger log
+            Microsoft.Extensions.Logging.ILogger log
             )
         {
             log.LogInformation("Get ALL Query.");
@@ -330,19 +349,19 @@ namespace My.Function
         [FunctionName("LargeDataSet")]
         public static async Task<IActionResult> LargeDataSet(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "largeDataSet")] HttpRequest req, 
-            ILogger log,
+            Microsoft.Extensions.Logging.ILogger log,
             CancellationToken cancellationToken
             )
         {
-            log.LogInformation("test JSON.");
+            log.LogInformation("test JSON.");            
 
             System.Diagnostics.Stopwatch watch;
             watch = System.Diagnostics.Stopwatch.StartNew();
+
             DataTable dt = null;
             await Task.Run(() => JsonConversions.jsonStreamToTable(out dt, req.Body, log));
             if (dt == null || dt.Rows.Count == 0)
             {
-                log.LogWarning("must provide a body to search for.");
                 return new BadRequestObjectResult("Expecting the body to contain a value.");
             }
             watch.Stop();
@@ -382,7 +401,7 @@ namespace My.Function
         [FunctionName("DataSet")]
         public static async Task<IActionResult> DataSet(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "dataSet")] HttpRequest req, 
-            ILogger log,
+            Microsoft.Extensions.Logging.ILogger log,
             CancellationToken cancellationToken
             )
         {     
@@ -409,7 +428,7 @@ namespace My.Function
         [FunctionName("youtubeLinks")]
         public static async Task<IActionResult> PutNames(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "putNames")] HttpRequest req, 
-            ILogger log,
+            Microsoft.Extensions.Logging.ILogger log,
             CancellationToken cancellationToken
             )
         {
@@ -472,7 +491,8 @@ namespace My.Function
 
             return connStr.Replace("{user}", user).Replace("{password}", password);
         }
-        public static void putData(ref int cnt, int jsonRows, YoutubeLink[] ytls, ILogger log, CancellationToken cancellationToken)
+        public static void putData(ref int cnt, int jsonRows, YoutubeLink[] ytls, Microsoft.Extensions.Logging.ILogger log, 
+            CancellationToken cancellationToken)
         {
             string query = "INSERT INTO YoutubeLinks(names, url) VALUES(@Names, @Url)";
             cnt = 0;
@@ -498,7 +518,7 @@ namespace My.Function
                         }
                         catch (Exception e)
                         {
-                            log.LogError(e.ToString());
+                            log.LogError(e, "Error found on insert");
                         }
                     }
                 }
@@ -510,7 +530,7 @@ namespace My.Function
         }
 
         //3. Use the following site to install SqlClient to make ODBC connection
-        public static void getData(ref string result, string name, ILogger log)
+        public static void getData(ref string result, string name, Microsoft.Extensions.Logging.ILogger log)
         {           
             string query;
             

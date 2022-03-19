@@ -10,7 +10,7 @@ namespace JsonTools
     public static class JsonConversions
     {
         // convert Json strings to datatable
-        public static DataTable stringToTable(string s, ILogger log)
+        public static DataTable stringToTable(string s, Microsoft.Extensions.Logging.ILogger log)
         {
             try
             {
@@ -18,12 +18,12 @@ namespace JsonTools
             }
             catch (Exception e)
             {
-                log.LogError(e.ToString());
+                log.LogError(e, "Failed to process: stringToTable");
                 return (new DataTable());
             }
         }
 
-        public static void jsonStreamToTable(out DataTable dt, Stream fs, ILogger log)
+        public static void jsonStreamToTable(out DataTable dt, Stream fs, Microsoft.Extensions.Logging.ILogger log)
         {
             using (StreamReader sr = new StreamReader(fs))
                 using(JsonReader reader = new JsonTextReader(sr))
@@ -69,7 +69,7 @@ namespace JsonTools
                                     }
                                     catch (Exception e)
                                     {
-                                        log.LogError(e.ToString());
+                                        log.LogWarning(e, "warning on row: {cnt}", cnt);
                                     }
                                     break;
                             }
@@ -77,7 +77,7 @@ namespace JsonTools
                     }
                     catch (Exception e)
                     {
-                        log.LogError(e.ToString());
+                        log.LogError(e, "failed to create table");
                     }
                 }
         }
