@@ -223,6 +223,9 @@ IV. Future settings
     Task.WhenAll(...Tasks)
     See video for how to catch all exceptions from this.
     https://www.youtube.com/watch?v=gW19LaAYczI
+
+    Splunk URL for univerity:
+    https://illinois.splunkcloud.com/
 */
 
 using System.Collections.Generic; //Used for lists and dictionaries
@@ -244,6 +247,7 @@ using JsonTools; // pull in custom class for conversting JSON
 #pragma warning disable CS1998
 namespace My.Function
 {
+
     public class HttpTrigger1
     {
         [FunctionName("getOptions")]
@@ -262,7 +266,7 @@ namespace My.Function
             //Serilog.ILogger logger = new Serilog.LoggerConfiguration().WriteTo.Console().CreateLogger();
             //log.
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            
+
             StringValues sv;
             req.Headers.TryGetValue("Authorize", out sv);
             string st2 = sv.FirstOrDefault("");
