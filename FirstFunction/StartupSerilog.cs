@@ -7,17 +7,7 @@ namespace SerilogNamespace
 {
     public static class Seriloger
     {
-        // private LogEventLevel _levelSwitch;
-        // private Logger _logger;
         const string _template = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Level}] {RequestId}-{SourceContext}: {Message}{NewLine}{Exception}";
-
-        // public static Logger logger { get { return _logger; }}
-
-        // public LogEventLevel levelSwitch 
-        // {   
-        //     get { return _levelSwitch; }
-        //     set { _levelSwitch = levelSwitch;}
-        // }
 
         public static Logger CreateSeriloger(string endpoint, string hecToken, string logLevel = "INFORMATION",
             string template = _template, string uriPath = "services/collector", string source = "", 

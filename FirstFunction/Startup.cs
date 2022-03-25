@@ -9,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using System;
 using Serilog;
 using SerilogNamespace;
-using Microsoft.Extensions.Logging; //This does not work right now, needed for ClearProviders()
+//using Microsoft.Extensions.Logging; //This does not work right now, needed for ClearProviders()
 
 [assembly: FunctionsStartup(typeof(My.Function.Startup))]
 namespace My.Function

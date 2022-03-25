@@ -9,6 +9,9 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 /*
  I. Setting up your environment
+    - If you get the error "A host error has occurred during startup operation" you will nbeed to start the azure storage emulator.
+    Just choose start and run and enter in the name: "Microsoft azure storage emulator"
+
     - Setting up azure tools
     https://www.youtube.com/watch?v=crI3SA0IadE
     This video has you install azure tools. Basically just search for "Azure Tools" and install.
@@ -247,7 +250,6 @@ using JsonTools; // pull in custom class for conversting JSON
 #pragma warning disable CS1998
 namespace My.Function
 {
-
     public class HttpTrigger1
     {
         [FunctionName("getOptions")]
@@ -263,8 +265,6 @@ namespace My.Function
             string pt = Environment.CurrentDirectory;
             log.LogInformation("Starting Serilog: {pt}", pt);
             
-            //Serilog.ILogger logger = new Serilog.LoggerConfiguration().WriteTo.Console().CreateLogger();
-            //log.
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
 
             StringValues sv;
@@ -288,7 +288,7 @@ namespace My.Function
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "read")] HttpRequest req, 
             //7. link storage account to azure function
             [Queue("outputqueue"), StorageAccount("AzureWebJobsStorage")] ICollector<string> msg,
-            Microsoft.Extensions.Logging.ILogger log
+            ILogger log
             )
         {
             log.LogInformation("Get Name Query.");
@@ -331,7 +331,7 @@ namespace My.Function
         [FunctionName("GetAllNames")]
         public static async Task<IActionResult> GetAllNames(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "all")] HttpRequest req, 
-            Microsoft.Extensions.Logging.ILogger log
+            ILogger log
             )
         {
             log.LogInformation("Get ALL Query.");
@@ -353,7 +353,7 @@ namespace My.Function
         [FunctionName("LargeDataSet")]
         public static async Task<IActionResult> LargeDataSet(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "largeDataSet")] HttpRequest req, 
-            Microsoft.Extensions.Logging.ILogger log,
+            ILogger log,
             CancellationToken cancellationToken
             )
         {
@@ -363,7 +363,7 @@ namespace My.Function
             watch = System.Diagnostics.Stopwatch.StartNew();
 
             DataTable dt = null;
-            await Task.Run(() => JsonConversions.jsonStreamToTable(out dt, req.Body, log));
+            await Task.Run(() => JsonConversions.jsonFullStreamToTable(out dt, req.Body, log));
             if (dt == null || dt.Rows.Count == 0)
             {
                 return new BadRequestObjectResult("Expecting the body to contain a value.");
@@ -404,35 +404,126 @@ namespace My.Function
 
         [FunctionName("DataSet")]
         public static async Task<IActionResult> DataSet(
-            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "dataSet")] HttpRequest req, 
-            Microsoft.Extensions.Logging.ILogger log,
-            CancellationToken cancellationToken
+            [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "dataSet")] HttpRequest req
+            , ILogger log
+            //, CancellationToken cancellationToken //This token just did not work      
             )
-        {     
+        {   
+            CancellationToken cancellationToken = req.HttpContext.RequestAborted;
+
             log.LogInformation("test JSON.");
 
-            string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+            int recordsWritten = 0;
+
+            string tbl = "YoutubeLinks2";
+            Dictionary<string, string> dc = new Dictionary<string, string>()
+                {{"namester", "name"},
+                {"cntrnum", "cntr"},
+                {"BLOCK", null}
+                };
+            SQLProcess sqlProcess = new SQLProcess(tbl);
+
+            System.Diagnostics.Stopwatch watch;
+            watch = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                recordsWritten = await sqlProcess.bulkUpoad(req.Body, cancellationToken);
+            }
+            catch(System.OperationCanceledException e)
+            {
+                log.LogWarning(e, $"Insert canceled: {recordsWritten} records inserted");
+            }
+            catch (Exception e)
+            {
+                log.LogError(e, "Error loading table");
+            }
+
+            foreach ((Exception, string) val in sqlProcess.logger.getNextMessage())
+                log.LogWarning(val.Item1, val.Item2);
+
+            watch.Stop();
+            Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
+            
+            int totalArrays = sqlProcess.jsonConversions.totalArrays;
+            int totalBlockCount = sqlProcess.jsonConversions.totalBlocksCount;
+            int currentBlockCount = sqlProcess.jsonConversions.currentBlockCount;
+            int currentCounter = sqlProcess.jsonConversions.currentCounter;
+
+            Console.WriteLine($"Records Written: {recordsWritten}");
+            Console.WriteLine($"Arrays processed: {totalArrays}, Total written: {totalBlockCount}");
+            Console.WriteLine($"Current block: {currentBlockCount}, Current counter: {currentCounter}");
+            if (!cancellationToken.IsCancellationRequested)
+                return new OkObjectResult($"Records Written: {recordsWritten}\n" +
+                    $"Arrays processed: {totalArrays}, Total written: {totalBlockCount}\n" +
+                    $"Current block: {currentBlockCount}, Current counter: {currentCounter}");
+            else
+                return null;
+
+            // JsonConversions jsonConversion = new JsonConversions();
+            // try
+            // {
+
+
+            //     using (SqlConnection con = new SqlConnection(connect()))
+            //     {
+            //         con.Open();
+            //         await foreach(DataTable dt2 in jsonConversion.jsonStreamTable(req.Body, 10000, null, cancellationToken))
+            //         {
+            //             SqlBulkCopy objbulk = new SqlBulkCopy(con);
+            //             objbulk.DestinationTableName = tbl;
+            //             objbulk.BulkCopyTimeout = 600;
+
+            //             foreach (DataColumn col in dt2.Columns)
+            //             {
+            //                 string value = string.Empty;
+            //                 string colName = col.ColumnName;
+            //                 if (!dc.TryGetValue(colName, out value))
+            //                     value = col.ColumnName;
+            //                 if (value is not null)
+            //                     objbulk.ColumnMappings.Add(colName, value);
+            //             }
+
+            //             await objbulk.WriteToServerAsync(dt2, cancellationToken);
+            //         }
+            //     }
+            // }
+            // catch (Exception e)
+            // {
+            //     log.LogError(e, "Error loading table");
+            // }
+            // watch.Stop();
+            // foreach ((Exception, string) val in jsonConversion.logger.getNextMessage())
+            //     log.LogWarning(val.Item1, val.Item2);
+
+            // Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
+            // Console.WriteLine($"Arrays processed: {jsonConversion.totalArrays}, Total written: {jsonConversion.totalBlocksCount}");
+            // Console.WriteLine($"Current block: {jsonConversion.currentBlockCount}, Current counter: {jsonConversion.currentCounter}");
+            // if (!cancellationToken.IsCancellationRequested)
+            //     return new OkObjectResult($"Arrays processed: {jsonConversion.totalArrays}, Total written: {jsonConversion.totalBlocksCount}\n" +
+            //         $"Current block: {jsonConversion.currentBlockCount}, Current counter: {jsonConversion.currentCounter}");
+            // else
+            //     return null;
+
+/*             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
             if (string.IsNullOrEmpty(requestBody) || requestBody == "")
             {
                 log.LogWarning("must provide a body to search for.");
                 return new BadRequestObjectResult("Expecting the body to contain a value.");
             }
-
-
-            System.Diagnostics.Stopwatch watch;
+            
             watch = System.Diagnostics.Stopwatch.StartNew();
-            DataTable dt = JsonConversions.stringToTable(requestBody, log);
+            DataTable dt = jsonConversion.jsonStringToTable(requestBody, log);
             //TableTools.logTable(dt);
             watch.Stop();
             Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
 
-            return new OkObjectResult("");
+            return new OkObjectResult(""); */
         }      
 
         [FunctionName("youtubeLinks")]
         public static async Task<IActionResult> PutNames(
             [HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = "putNames")] HttpRequest req, 
-            Microsoft.Extensions.Logging.ILogger log,
+            ILogger log,
             CancellationToken cancellationToken
             )
         {
@@ -495,7 +586,7 @@ namespace My.Function
 
             return connStr.Replace("{user}", user).Replace("{password}", password);
         }
-        public static void putData(ref int cnt, int jsonRows, YoutubeLink[] ytls, Microsoft.Extensions.Logging.ILogger log, 
+        public static void putData(ref int cnt, int jsonRows, YoutubeLink[] ytls, ILogger log, 
             CancellationToken cancellationToken)
         {
             string query = "INSERT INTO YoutubeLinks(names, url) VALUES(@Names, @Url)";
@@ -534,7 +625,7 @@ namespace My.Function
         }
 
         //3. Use the following site to install SqlClient to make ODBC connection
-        public static void getData(ref string result, string name, Microsoft.Extensions.Logging.ILogger log)
+        public static void getData(ref string result, string name, ILogger log)
         {           
             string query;
             
