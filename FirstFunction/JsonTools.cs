@@ -10,6 +10,31 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.CompilerServices;
 using System.Data.SqlClient;
+using System.Text;
+using System.Text.RegularExpressions;
+
+/*
+    SQL server name: rickodb1.database.windows.net
+    SQL Database Name: db1
+    SQL User: sqluser
+    SQL pwd: pswd1234!
+*/
+
+/*
+Oracle bulk copy for dataTable
+ OracleConnection oracleConnection = new OracleConnection(Variables.strOracleCS);
+
+                    oracleConnection.Open();
+                    using (OracleBulkCopy bulkCopy = new OracleBulkCopy(oracleConnection))
+                    {
+                        bulkCopy.DestinationTableName = qualifiedTableName;
+                        bulkCopy.WriteToServer(dataTable);
+                    }
+                    oracleConnection.Close();
+                    oracleConnection.Dispose();
+
+*/
+
 namespace JsonTools
 {
     public class JsonConversions
@@ -155,9 +180,11 @@ namespace JsonTools
                         catch (Exception e)
                         {
                             int current = _currentCounter + _currentBlockCount;
-                            logger.add((e, $"Exception: processing: row {current}, Array {_totalArrays}"));
+                            int arrays = _totalArrays;
+
+                            logger.add((e, $"Exception: processing: row {current}, Array {arrays}"));
                             log?.LogWarning(e, "Exception: processing: row {current}, Array {ary}", 
-                                current, _totalArrays);
+                                current, arrays);
                             continue; // leave the while loop
                         }
 
@@ -170,9 +197,10 @@ namespace JsonTools
                                 _totalArrays += 1;
                                 if (_currentCounter > 0)
                                 {
+                                    _totalBlocksCount += _currentCounter;
+                                    yield return dt;
                                     _currentCounter = 0;
                                     _currentBlockCount = 0;
-                                    yield return dt;
                                     dt.Clear();
                                     dt.Columns.Clear();
                                 }
@@ -183,8 +211,8 @@ namespace JsonTools
                                 {
                                     _currentBlockCount += _currentCounter;
                                     _totalBlocksCount += _currentCounter;
-                                    _currentCounter = 0;
                                     yield return dt;
+                                    _currentCounter = 0; 
                                     dt.Clear();
                                 }
 
@@ -213,9 +241,11 @@ namespace JsonTools
                                 catch (Exception e)
                                 {
                                     int current = _currentCounter + _currentBlockCount;
-                                    logger.add((e, $"(case JsonToken.PropertyName) processing: row {current}, Array {_totalArrays}"));
-                                    log?.LogWarning(e, "(case JsonToken.PropertyName) Exception: processing: row {current}, Array {ary}",
-                                        current, _totalArrays);
+                                    int arrays = _totalArrays;
+
+                                    logger.add((e, $"(case JsonToken.PropertyName) processing: row {current}, Array {arrays}"));
+                                    log?.LogWarning(e, "(case JsonToken.PropertyName) Exception: processing: row {current}, Array {arrays}",
+                                        current, arrays);
                                 }
                                 break;
                         }
@@ -226,7 +256,6 @@ namespace JsonTools
             {
                 _currentBlockCount += _currentCounter;
                 _totalBlocksCount += _currentCounter;
-                _currentCounter = 0;
                 yield return dt;
             }
 
@@ -253,6 +282,20 @@ namespace JsonTools
             set { _fieldMappings = value; }
         }
         
+        private List<string> _mergeOn;
+        public List<string> mergeOn
+        {
+            get { return _mergeOn; }
+            set { _mergeOn = value; }
+        }
+
+        private List<string> _mergeField;
+        public List<string> mergeField
+        {
+            get { return _mergeField; }
+            set { _mergeField = mergeField; }
+        }
+
         public SQLProcess(string tableName = null, Dictionary<string, string> fieldMappings = null)
         {
             logger = new Logger();
@@ -265,66 +308,199 @@ namespace JsonTools
         async public Task<int> bulkUpoad(Stream fs, ILogger log = null,
             CancellationToken cancellationToken = default(CancellationToken))
         {
-            return await bulkUpoad(fs, 10000, 600, log, cancellationToken);
+        	return await bulkUpoad(fs, _tableName, _fieldMappings, 10000, 600, log, cancellationToken);
         }
 
         async public Task<int> bulkUpoad(Stream fs, 
             CancellationToken cancellationToken = default(CancellationToken))
         {
-            return await bulkUpoad(fs, 10000, 600, null, cancellationToken);
-        }
-        async public Task<int> bulkUpoad(Stream fs, string tableName, 
-            Dictionary<string, string> fieldMappings, 
-            int timeOut = 600, int batch = 10000, ILogger log = null, 
-            CancellationToken cancellationToken = default(CancellationToken))
-        {
-            _fieldMappings = fieldMappings;
-            return await bulkUpoad(fs, tableName, timeOut, batch, log, cancellationToken);
-        }
-
-        async public Task<int> bulkUpoad(Stream fs, string tableName, int batch = 10000,
-            int timeOut = 600, ILogger log = null, 
-            CancellationToken cancellationToken = default(CancellationToken))
-        {
-            _tableName = tableName;
-            return await bulkUpoad(fs, timeOut, batch, log, cancellationToken);
+        	return await bulkUpoad(fs, _tableName, _fieldMappings, 10000, 600, null, cancellationToken);
         }
 
         public async Task<int> bulkUpoad(Stream fs, int batch = 10000,
             int timeOut = 600, ILogger log = null, 
             CancellationToken cancellationToken = default(CancellationToken))
         {   
-            int written = 0;
+		    return await bulkUpoad(fs, _tableName, _fieldMappings, 10000, 600, log, cancellationToken);
+	    }
 
+        async public Task<int> bulkUpoad(Stream fs, string tableName, int batch = 10000,
+            int timeOut = 600, ILogger log = null, 
+            CancellationToken cancellationToken = default(CancellationToken))
+        {
+        	return await bulkUpoad(fs, tableName, _fieldMappings, 10000, 600, log, cancellationToken);
+        }
+
+        async public Task<int> bulkUpoad(Stream fs, string tableName, 
+            Dictionary<string, string> fieldMappings, 
+            int batch = 10000, int timeOut = 600, ILogger log = null, 
+            CancellationToken cancellationToken = default(CancellationToken), SqlBulkCopyOptions options = 0)
+        {
             using (SqlConnection con = new SqlConnection(connStr))
             {
-                con.Open();
-
-                using (SqlBulkCopy objBulk = new SqlBulkCopy(con))
+                try
                 {
-                    objBulk.BulkCopyTimeout = 600;
-                    objBulk.DestinationTableName = _tableName;
+                    await con.OpenAsync(cancellationToken);
+                }
+                catch (Exception e)
+                {
+                    cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
+                    logger.add((e, $"SqlBulkCopy open Exception"));
+                    log?.LogWarning(e, "SqlBulkCopy open Exception");
+                    return -1;
+                }
 
-                    await foreach(DataTable dt in jsonConversions.jsonStreamTable(fs, 10000, null, cancellationToken))
+                return (await bulkQuery(con, fs, tableName, fieldMappings, 
+                    batch, timeOut, log, cancellationToken, options));
+            }
+        }
+
+        async public Task<int> bulkQuery(SqlConnection con, Stream fs, 
+            string tableName, Dictionary<string, string> fieldMappings,
+            int batch = 10000, int timeOut = 600, ILogger log = null, 
+            CancellationToken cancellationToken = default(CancellationToken),
+            SqlBulkCopyOptions options = 0)
+        {
+            int written = 0;
+
+            using (SqlBulkCopy objBulk = new SqlBulkCopy(con, options, null))
+            {
+                objBulk.BulkCopyTimeout = 600;
+                objBulk.DestinationTableName = tableName;
+
+                int prevArrays = 1;
+
+                await foreach(DataTable dt in jsonConversions.jsonStreamTable(fs, 10000, null, cancellationToken))
+                {
+                    int arrays = jsonConversions.totalArrays;
+                    try
                     {
                         if (objBulk.ColumnMappings.Count == 0)
                             foreach (DataColumn col in dt.Columns)
                             {
-                                string value = "";
-                                string colName = col.ColumnName;
-                                if (_fieldMappings is null || !_fieldMappings!.TryGetValue(colName, out value))
+                                string value;
+
+                                if (fieldMappings is null || !fieldMappings!.TryGetValue(col.ColumnName, out value))
                                     value = col.ColumnName;
                                 if (value is not null)
-                                    objBulk.ColumnMappings.Add(colName, value);
+                                    objBulk.ColumnMappings.Add(col.ColumnName, value);
                             }
-                        
-                        await objBulk.WriteToServerAsync(dt, cancellationToken);
-                        //written += objBulk.SqlRowsCopied
+                        try
+                        {
+                            await objBulk.WriteToServerAsync(dt, cancellationToken);
+                            written += jsonConversions.currentCounter;
+                        }
+                        catch (Exception e)
+                        {
+                            cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
+                            prevArrays = arrays;
+                            objBulk.ColumnMappings.Clear();
+                            int current = jsonConversions.currentCounter + jsonConversions.currentBlockCount;
+
+                            logger.add((e, $"SqlBulkCopy failed Exception: row {current}, Array {arrays}"));
+                            log?.LogWarning(e, "SqlBulkCopy failed Exception: row {current}, Array {arrays}", current, arrays);
+                        }
+                        finally 
+                        {
+                            if (prevArrays != arrays)
+                            {
+                                prevArrays = arrays;
+                                objBulk.ColumnMappings.Clear();
+                            }
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
+                        logger.add((e, "ColumnMappings failed Exception"));
+                        log?.LogWarning(e, "ColumnMappings failed Exception");
                     }
                 }
             }
 
             return written;
+        }
+    public async Task<Tuple<int, int>> bulkMerge(Stream fs, string tableName,
+            Dictionary<string, string> fieldMappings, 
+            List<string> mergeOn, List<string> mergeField = null,
+            bool purgeOmitted = false,
+            int batch = 10000, int timeOut = 600, ILogger log = null, 
+            CancellationToken cancellationToken = default(CancellationToken))
+        {
+            int written = -1, updated = -1;
+
+            using (SqlConnection con = new SqlConnection(connStr))
+            {
+                
+                if (mergeOn?.Count > 0)
+                {
+                    try
+                    {
+                        await con.OpenAsync(cancellationToken);
+
+                        string wkTableName = TableTools.removeInvalidChars(tableName);
+                        //create/replace temporary table for our merge query
+                        string sqlQuery = SqlStrings.buildTempTable.Replace("{tableName}", wkTableName);
+                        SqlCommand cmd = new SqlCommand(sqlQuery, con);
+                        await cmd.ExecuteNonQueryAsync(cancellationToken);
+
+                        //Write Json stream to newly created temp table
+                        written = await bulkQuery(con, fs, "#"+tableName, fieldMappings, 
+                            batch, timeOut, log, cancellationToken, SqlBulkCopyOptions.TableLock);
+
+                        /* 
+                        This code is for debugging purposes and will show us the first 10 records loaded as well as a 
+                        total count from the temp table. This may be important since there is no easy way to view the 
+                        data that is loaded into this table
+
+                        DataTable dt = new DataTable();
+                        sqlQuery = "SELECT top 10 a.*, count(*) over () FROM [" + wkTableName + "] a";
+                        SqlCommand command = new SqlCommand(sqlQuery, con);
+                        SqlDataAdapter da = new SqlDataAdapter(command);
+                        da.Fill(dt);
+                        TableTools.logTable(dt); 
+                        */
+
+                        //Merge newly created temp table with existing table
+                        int offset = 0;
+                        StringBuilder sb = new StringBuilder(
+                            SqlStrings.mergeTempTableStart
+                            .Replace("{tableName}", wkTableName)
+                            .Replace("{mergeOnTB}", TableTools.buildTableInsert(mergeOn, "@onTB", ref offset))
+                            .Replace("{insertFieldTB}", TableTools.buildTableInsert(mergeField, "@fieldTB", ref offset)));
+                        if (purgeOmitted)
+                            sb.Append(SqlStrings.mergeTempTablePurge);
+                        else
+                            sb.Append(SqlStrings.mergeTempTableNoPurge);
+                        sb.Append(SqlStrings.mergeTempTableEnd);
+
+                        /* 
+                        This will log the full merge query for analysis. This may be important since the merge query 
+                        is dynamically created.
+                        
+                        log?.LogWarning(sb.ToString()); 
+                        */
+
+                        cmd = new SqlCommand(sb.ToString(), con);
+                        cmd.CommandTimeout = timeOut;
+                        updated = await cmd.ExecuteNonQueryAsync(cancellationToken) - offset;
+                    }
+                    catch (Exception e)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
+                        logger.add((e, "bulkMerge open Exception"));
+                        log?.LogWarning(e, "bulkMerge open Exception");
+                    }
+                }
+                else
+                {
+                    ArgumentException e = new ArgumentNullException("Argument List<string> null Exception");
+                    logger.add((e, "Argument List<string>: mergeOn must contain at least one entry"));
+                    log?.LogWarning(e, "Argument List<string>: mergeOn must contain at least one entry");
+                }
+            }
+
+            return Tuple.Create(written, updated);
         }
         
         public static string connect()
@@ -375,6 +551,30 @@ namespace JsonTools
     }
     public static class TableTools
     {
+        private const string ValidateTable = @"[^A-Z0-9@#$]";
+        private static readonly Regex rxTbl = new Regex(ValidateTable, RegexOptions.Compiled|RegexOptions.IgnoreCase);
+
+        public static string removeInvalidChars(string s) { return rxTbl.Replace(s, "");}
+
+        public static string buildTableInsert(List<string> lst, string tb, ref int cntr)
+        {
+            StringBuilder wrkBldr = new StringBuilder();
+            int flds = lst?.Count ?? 0;
+            if (flds>0)
+            {
+                lst[0] = TableTools.removeInvalidChars(lst[0]);
+
+                wrkBldr.Append("insert into ")
+                       .Append(tb)
+                       .Append(" values('")
+                       .Append(lst.Aggregate((x, y) => 
+                            x + "'),('" + TableTools.removeInvalidChars(y)))
+                       .Append("');");
+                cntr+=flds;
+            }
+            return wrkBldr.ToString();
+        }
+
         public static void logTable(DataTable dt, bool HeadersOnly = false)
         {
             DataRow[] currentRows = dt.Select(null, null, DataViewRowState.CurrentRows);
@@ -400,5 +600,4 @@ namespace JsonTools
             }
         }
     }
-
 }

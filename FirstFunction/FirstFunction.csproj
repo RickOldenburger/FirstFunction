@@ -6,10 +6,11 @@
 	<ItemGroup>
 		<PackageReference Include="Microsoft.NET.Sdk.Functions" Version="4.1.0"/>
 		<PackageReference Include="Microsoft.Azure.Functions.Extensions" Version="1.1.0"/>
+		<PackageReference Include="Microsoft.Identity.Web" Version="1.*" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="6.0.0"/>
-		<PackageReference Include="Microsoft.Azure.WebJobs.Extensions.Storage" Version="5.0.0"/>
+		<PackageReference Include="Microsoft.Azure.WebJobs.Extensions.Storage" Version="4.0.5"/>
 		<PackageReference Include="System.Data.SqlClient" Version="4.8.3"/>
-
+		<PackageReference Include="System.Text.RegularExpressions" Version="4.3.1"/>
 		<PackageReference Include="Serilog" Version="2.10.0"/>
 		<PackageReference Include="Serilog.Extensions.Logging" Version="3.1.0"/>
 		<PackageReference Include="Serilog.Sinks.Console" Version="4.0.1"/>
@@ -17,21 +18,20 @@
 		<PackageReference Include="Serilog.Enrichers.Environment" Version="2.2.0"/>
 		<PackageReference Include="Serilog.Enrichers.Thread" Version="3.1.0"/>
 		<PackageReference Include="Serilog.Enrichers.Process" Version="2.0.2"/>
-
 		<PackageReference Include="Serilog.Sinks.File" Version="5.0.0"/>
-		<PackageReference Include="Serilog.AspNetCore" Version="5.0.0"/>
+		<PackageReference Include="Serilog.AspNetCore" Version="5.0.0"/>		
 		<PackageReference Include="Serilog.Settings.Configuration" Version="3.3.0"/>
 	</ItemGroup>
 	<ItemGroup>
 		<None Update="host.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
-		<None Update="appsettings.json">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
 		<None Update="local.settings.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 			<CopyToPublishDirectory>Never</CopyToPublishDirectory>
+		</None>
+		<None Update="appsettings.json">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
 	</ItemGroup>
 </Project>

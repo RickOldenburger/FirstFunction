@@ -27,9 +27,10 @@ namespace My.Function
 
         public override void Configure(IFunctionsHostBuilder builder)
         {
+
             IConfigurationRoot configuration = new ConfigurationBuilder()
                 .SetBasePath(Environment.CurrentDirectory)
-                .AddJsonFile("appsettings.json")
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
                 .Build();
             
             builder.Services.AddLogging(lb => lb

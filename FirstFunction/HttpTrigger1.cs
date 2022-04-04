@@ -31,7 +31,7 @@ using Newtonsoft.Json;
         Microsoft.NET.Sdk.Functions
         Microsoft.Extensions.DependencyInjection
         System.Data.SqlClient
-        Microsoft.Azure.WebJobs.Extensions.Storage   --> will use when adding a storage account
+        Microsoft.Azure.WebJobs.Extensions.Storage   --> will use when adding a storage account USE VERSION 4 as the later versions cause issues.
 
     -Starting azurite:
         Once azurite is installed you can edit the file you can run: Microsoft Azure Storage emulator from the start menu
@@ -413,18 +413,32 @@ namespace My.Function
 
             log.LogInformation("test JSON.");
 
-            int recordsWritten = 0;
-
             string tbl = "YoutubeLinks2";
             Dictionary<string, string> dc = new Dictionary<string, string>()
                 {{"namester", "name"},
                 {"cntrnum", "cntr"},
                 {"BLOCK", null}
                 };
-            SQLProcess sqlProcess = new SQLProcess(tbl);
+            SQLProcess sqlProcess = new SQLProcess(tbl, dc);
+
+            List<string> mergeOn = new List<string>();
+            mergeOn.Add("name");
+            mergeOn.Add("url");
+            sqlProcess.mergeOn = mergeOn;
+
+            List<string> mergeField = new List<string>();
+            mergeField.Add("cntr");
 
             System.Diagnostics.Stopwatch watch;
             watch = System.Diagnostics.Stopwatch.StartNew();
+            Tuple<int, int> rst = await sqlProcess.bulkMerge(req.Body, tbl, dc, mergeOn,  mergeField, false, 
+                10000, 600, log, cancellationToken);
+            foreach ((Exception, string) val in sqlProcess.logger.getNextMessage())
+                log.LogWarning(val.Item1, val.Item2);
+            watch.Stop();
+            Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
+
+        /*   
             try
             {
                 recordsWritten = await sqlProcess.bulkUpoad(req.Body, cancellationToken);
@@ -440,84 +454,23 @@ namespace My.Function
 
             foreach ((Exception, string) val in sqlProcess.logger.getNextMessage())
                 log.LogWarning(val.Item1, val.Item2);
-
-            watch.Stop();
-            Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
-            
+        */
+            int recordsProcessed = rst.Item1;
+            int recordsWritten = rst.Item2;
             int totalArrays = sqlProcess.jsonConversions.totalArrays;
             int totalBlockCount = sqlProcess.jsonConversions.totalBlocksCount;
             int currentBlockCount = sqlProcess.jsonConversions.currentBlockCount;
             int currentCounter = sqlProcess.jsonConversions.currentCounter;
 
-            Console.WriteLine($"Records Written: {recordsWritten}");
+            Console.WriteLine($"Records processed: {recordsProcessed}, Records Written: {recordsWritten}");
             Console.WriteLine($"Arrays processed: {totalArrays}, Total written: {totalBlockCount}");
             Console.WriteLine($"Current block: {currentBlockCount}, Current counter: {currentCounter}");
             if (!cancellationToken.IsCancellationRequested)
-                return new OkObjectResult($"Records Written: {recordsWritten}\n" +
-                    $"Arrays processed: {totalArrays}, Total written: {totalBlockCount}\n" +
+                return new OkObjectResult($"Records processed: {recordsProcessed}, Records Written: {recordsWritten}\n" +
+                    $"Arrays processed: {totalArrays}, Total blocks written: {totalBlockCount}\n" +
                     $"Current block: {currentBlockCount}, Current counter: {currentCounter}");
             else
                 return null;
-
-            // JsonConversions jsonConversion = new JsonConversions();
-            // try
-            // {
-
-
-            //     using (SqlConnection con = new SqlConnection(connect()))
-            //     {
-            //         con.Open();
-            //         await foreach(DataTable dt2 in jsonConversion.jsonStreamTable(req.Body, 10000, null, cancellationToken))
-            //         {
-            //             SqlBulkCopy objbulk = new SqlBulkCopy(con);
-            //             objbulk.DestinationTableName = tbl;
-            //             objbulk.BulkCopyTimeout = 600;
-
-            //             foreach (DataColumn col in dt2.Columns)
-            //             {
-            //                 string value = string.Empty;
-            //                 string colName = col.ColumnName;
-            //                 if (!dc.TryGetValue(colName, out value))
-            //                     value = col.ColumnName;
-            //                 if (value is not null)
-            //                     objbulk.ColumnMappings.Add(colName, value);
-            //             }
-
-            //             await objbulk.WriteToServerAsync(dt2, cancellationToken);
-            //         }
-            //     }
-            // }
-            // catch (Exception e)
-            // {
-            //     log.LogError(e, "Error loading table");
-            // }
-            // watch.Stop();
-            // foreach ((Exception, string) val in jsonConversion.logger.getNextMessage())
-            //     log.LogWarning(val.Item1, val.Item2);
-
-            // Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
-            // Console.WriteLine($"Arrays processed: {jsonConversion.totalArrays}, Total written: {jsonConversion.totalBlocksCount}");
-            // Console.WriteLine($"Current block: {jsonConversion.currentBlockCount}, Current counter: {jsonConversion.currentCounter}");
-            // if (!cancellationToken.IsCancellationRequested)
-            //     return new OkObjectResult($"Arrays processed: {jsonConversion.totalArrays}, Total written: {jsonConversion.totalBlocksCount}\n" +
-            //         $"Current block: {jsonConversion.currentBlockCount}, Current counter: {jsonConversion.currentCounter}");
-            // else
-            //     return null;
-
-/*             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            if (string.IsNullOrEmpty(requestBody) || requestBody == "")
-            {
-                log.LogWarning("must provide a body to search for.");
-                return new BadRequestObjectResult("Expecting the body to contain a value.");
-            }
-            
-            watch = System.Diagnostics.Stopwatch.StartNew();
-            DataTable dt = jsonConversion.jsonStringToTable(requestBody, log);
-            //TableTools.logTable(dt);
-            watch.Stop();
-            Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
-
-            return new OkObjectResult(""); */
         }      
 
         [FunctionName("youtubeLinks")]
