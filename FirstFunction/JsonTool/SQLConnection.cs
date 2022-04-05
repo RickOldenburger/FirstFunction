@@ -1,21 +1,22 @@
 using System;
-using System.Runtime.InteropServices;
 
-namespace SQLConnection
+namespace JsonTools
 {
-    public class SqlData
+    public class SQLConnection
     {
-        public string connection { get; set; }
 
-        public void SQLData(string conn = "")
+        private string _connection;
+        public string connection { get { return _connection; } }
+
+        public SQLConnection(string conn = "")
         {
-            if (conn == string.Empty)
-                connection = connect();
+            if (conn == "")
+                _connection = connect();
             else
-                connection = conn;
+                _connection = conn;
         }
 
-        public static string connect()
+        public virtual string connect()
         {
             string connStr = Environment.GetEnvironmentVariable("connection_string", EnvironmentVariableTarget.Process);
             string password = Environment.GetEnvironmentVariable("CustomCONNSTR_password", EnvironmentVariableTarget.Process);
