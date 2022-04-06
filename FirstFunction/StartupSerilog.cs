@@ -3,17 +3,17 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Core;
 
-namespace SerilogNamespace
+namespace CustomLogger
 {
-    public static class Seriloger
+    public static class Serilogger
     {
         const string _template = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Level}] {RequestId}-{SourceContext}: {Message}{NewLine}{Exception}";
 
-        public static Logger CreateSeriloger(string endpoint, string hecToken, string logLevel = "INFORMATION",
+        public static Logger Create(string endpoint, string hecToken, string logLevel = "INFORMATION",
             string template = _template, string uriPath = "services/collector", string source = "", 
             string sourceType = "", string index = "")
         {
-            LoggingLevelSwitch _levelSwitch = new LoggingLevelSwitch(returnLogLevel(logLevel));
+            LoggingLevelSwitch _levelSwitch = new LoggingLevelSwitch(getLogLevelByName(logLevel));
             if (template == "")
                 template = _template;
 
@@ -37,7 +37,7 @@ namespace SerilogNamespace
                 .CreateLogger());
         }
 
-        public static LogEventLevel returnLogLevel(string eventLevel)
+        public static LogEventLevel getLogLevelByName(string eventLevel)
         {
             switch (eventLevel.ToUpper())
             {

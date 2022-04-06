@@ -8,7 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using Serilog;
-using SerilogNamespace;
+using CustomLogger;
 //using Microsoft.Extensions.Logging; //This does not work right now, needed for ClearProviders()
 
 [assembly: FunctionsStartup(typeof(My.Function.Startup))]
@@ -33,11 +33,12 @@ namespace My.Function
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
                 .Build();
             
-            builder.Services.AddLogging(lb => lb
-                //.ClearProviders() // Generates error: Value cannot be null. (Parameter 'provider')
-                .AddSerilog(Seriloger.CreateSeriloger(SPLUNK_ENDPOINT, SPLUNK_HEC_TOKEN, 
+            builder.Services.AddLogging(logBuilder => logBuilder
+                // .ClearProviders() // Generates error: Value cannot be null. (Parameter 'provider')
+                .AddSerilog(Serilogger.Create(SPLUNK_ENDPOINT, SPLUNK_HEC_TOKEN, 
                     SPLUNK_LOG_LEVEL, CONSOLE_TEMPLATE, SPLUNK_URI_PATH, SPLUNK_SOURCE,
                     SPLUNK_SOURCE_TYPE, SPLUNK_INDEX), true));
+     
         }
     }
 }
