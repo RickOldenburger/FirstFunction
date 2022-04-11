@@ -76,7 +76,7 @@ namespace CustomLogger
 
             LoggingLevelSwitch _levelSwitch = new LoggingLevelSwitch(getLogLevelByName(minLogLevel));
 
-            return (new LoggerConfiguration()
+            LoggerConfiguration logger = new LoggerConfiguration()
                 .WriteTo.Console(outputTemplate: template)
                 .WriteTo.EventCollector(
                     splunkHost: splunkConfig.splunkHost,
@@ -86,21 +86,29 @@ namespace CustomLogger
                     sourceType: splunkConfig.sourceType,
                     host: splunkConfig.host,
                     index: splunkConfig.index
-                )
+                );
                 //.ReadFrom.Configuration(configuration) Broken in .net5 and .net6
-                .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-                .MinimumLevel.Override("System", LogEventLevel.Warning)
+            foreach(var setting in serilogOverride) {
+                // Dont try to set empty values (usually just parent "Override" object)
+                if (String.IsNullOrEmpty(setting.Value)) continue;
+
+                var settingName = setting.Key.Split(":")[^1];
+                Console.WriteLine($"[DEBUG] Setting minimum log level for {settingName} to {setting.Value}");
+                logger.MinimumLevel.Override(settingName, getLogLevelByName(setting.Value));
+            }
+            logger
                 .MinimumLevel.ControlledBy(_levelSwitch)
                 .Enrich.FromLogContext()
                 .Enrich.WithMachineName()
                 .Enrich.WithProcessId()
-                .Enrich.WithThreadId()
-                .CreateLogger());
+                .Enrich.WithThreadId();
+
+            return logger.CreateLogger();
         }
 
         public static LogEventLevel getLogLevelByName(string eventLevel)
         {
-            switch (eventLevel.ToUpper())
+            switch (eventLevel?.ToUpper())
             {
                 case "NONE":
                 case "CRITICAL":
