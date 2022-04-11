@@ -229,6 +229,9 @@ IV. Future settings
 
     Splunk URL for univerity:
     https://illinois.splunkcloud.com/
+
+    Microsoft Azure source
+    https://github.com/Azure/azure-webjobs-sdk/tree/dev/src
 */
 
 using System.Collections.Generic; //Used for lists and dictionaries
@@ -446,6 +449,9 @@ namespace My.Function
             watch.Stop();
             Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
 
+            SQLProcess s = new SQLProcess();
+            s.mergeOn = new List<string>();
+
         /*   
             try
             {
@@ -497,7 +503,7 @@ namespace My.Function
                 log.LogWarning("must provide a body to search for.");
                 return new BadRequestObjectResult("Expecting the body to contain a value.");
             }
-            
+
             System.Diagnostics.Stopwatch watch;
             watch = System.Diagnostics.Stopwatch.StartNew();
             YoutubeLink[] youtubeLinks = null;
@@ -518,8 +524,11 @@ namespace My.Function
             watch.Stop();
             Console.WriteLine($"Execution Time: {watch.ElapsedMilliseconds} ms");
 
-            //It is always a good idea to await results from any process if you want a return value. (We are returning the count...)
-            await Task.Run(() => putData(ref cntr, jsonRows, youtubeLinks, log, cancellationToken));
+            SQLProcess sqlProcess = new SQLProcess();
+            cntr = await sqlProcess.putData("YoutubeLinks2", youtubeLinks, log, cancellationToken);
+
+            //It is always a good idea to await results from any process so we can pass a cancelation token to it. (We are returning the count...)
+            //await Task.Run(() => putData(ref cntr, jsonRows, youtubeLinks, log, cancellationToken));
 
             string responseMessage = ($"{cntr} out of {jsonRows} Record(s)");
             return new OkObjectResult(responseMessage);
@@ -530,8 +539,8 @@ namespace My.Function
         {      
              // for newtonsoft use JsonProperty
              //[JsonProperty("name")] 
-             [DataMember(Name = "name")]
-            public string names { get; set; }
+            [DataMember(Name = "name")]
+            public string name { get; set; }
             [DataMember]
             public string url { get; set; }
             [DataMember]
@@ -550,7 +559,7 @@ namespace My.Function
         public static void putData(ref int cnt, int jsonRows, YoutubeLink[] ytls, ILogger log, 
             CancellationToken cancellationToken)
         {
-            string query = "INSERT INTO YoutubeLinks(names, url) VALUES(@Names, @Url)";
+            string query = "INSERT INTO YoutubeLinks2(name, url, cntr) VALUES(@Name, @Url, @Cntr)";
             cnt = 0;
             try
             {
@@ -567,8 +576,9 @@ namespace My.Function
                         try
                         {
                             SqlCommand command = new SqlCommand(query, connection);
-                            command.Parameters.AddWithValue("@Names", ytl.names);
+                            command.Parameters.AddWithValue("@Name", ytl.name);
                             command.Parameters.AddWithValue("@Url", ytl.url);
+                            command.Parameters.AddWithValue("@Cntr", ytl.cntr);
                             command.ExecuteNonQuery();
                             cnt++;
                         }

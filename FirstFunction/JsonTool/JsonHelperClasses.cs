@@ -50,8 +50,28 @@ namespace JsonTools
 
         public static string removeInvalidChars(string s) { return rxTbl.Replace(s, "");}
 
+        public static string buildFromList(List<string> lst)
+        {
+            // Returns list of fields in paranthesis
+            // Ex: (fld1, fld2, fld3)
+            StringBuilder wrkBldr = new StringBuilder();
+            int flds = lst?.Count ?? 0;
+            if (flds>0)
+            {
+                lst[0] = TableTools.removeInvalidChars(lst[0]);
+
+                wrkBldr.Append("(")
+                    .Append(lst.Aggregate((x, y) => 
+                        x + "," + TableTools.removeInvalidChars(y)))
+                    .Append(")");
+            }
+            return wrkBldr.ToString();
+        }
+
         public static string buildTableInsert(List<string> lst, string tb, ref int cntr)
         {
+            // Returns list of field with each in a paranthesis
+            // Ex: insert into tbl1 values('fld1'),('fld2'),('fld3');
             StringBuilder wrkBldr = new StringBuilder();
             int flds = lst?.Count ?? 0;
             if (flds>0)
@@ -59,14 +79,40 @@ namespace JsonTools
                 lst[0] = TableTools.removeInvalidChars(lst[0]);
 
                 wrkBldr.Append("insert into ")
-                       .Append(tb)
-                       .Append(" values('")
-                       .Append(lst.Aggregate((x, y) => 
-                            x + "'),('" + TableTools.removeInvalidChars(y)))
-                       .Append("');");
+                    .Append(tb)
+                    .Append(" values('")
+                    .Append(lst.Aggregate((x, y) => 
+                        x + "'),('" + TableTools.removeInvalidChars(y)))
+                    .Append("');");
                 cntr+=flds;
             }
             return wrkBldr.ToString();
+        }
+
+        public static string buildTableParms(List<string> lst, string tb)
+        {   
+            // Returns list of field as a parameter
+            // Ex: insert into  tbl1(fld1,fld2,fld3) values(@fld1,@fld2,@fld3);       
+            if ((lst?.Count ?? 0)>0)
+            {
+                lst[0] = TableTools.removeInvalidChars(lst[0]);
+
+                StringBuilder wrkBldr = new StringBuilder(
+                    lst.Aggregate((x, y) => 
+                    x + "," + TableTools.removeInvalidChars(y)));
+                
+                StringBuilder result = new StringBuilder("insert into ")
+                    .Append(TableTools.removeInvalidChars(tb))
+                    .Append("(")
+                    .Append(wrkBldr)
+                    .Append(") values(@")
+                    .Append(wrkBldr.Replace(",",",@"))
+                    .Append(");");
+
+                return result.ToString();
+            }
+
+            return "";
         }
 
         public static void logTable(DataTable dt, bool HeadersOnly = false)

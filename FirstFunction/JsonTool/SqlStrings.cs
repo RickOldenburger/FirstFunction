@@ -1,3 +1,5 @@
+using System;
+
 namespace JsonTools
 {
     static class SqlStrings
@@ -6,7 +8,9 @@ namespace JsonTools
 @"drop table if exists [#{tableName}];
 select * into [#{tableName}]
 from [{tableName}]
-where 1=0";
+where 1=0;
+create unique index [#idc_{tableName}] on [#{tableName}]
+{onTB};";
 
         public const string mergeTempTableStart =
 @"declare @TBN varchar(128) = '{tableName}';
