@@ -16,29 +16,37 @@ namespace My.Function
 {
     public class Startup : FunctionsStartup
     {
-        const string SPLUNK_ENDPOINT = "https://splunk-hec.machinedata.illinois.edu:8088"; //  Your splunk url 
-        const string SPLUNK_HEC_TOKEN = "ca1a4a25-806a-4f5b-bf83-42b4732d2edb"; // Your HEC token.
-        const string SPLUNK_LOG_LEVEL = "WARNING";
-        const string CONSOLE_TEMPLATE = "";
-        const string SPLUNK_URI_PATH = "services/collector/event";
-        const string SPLUNK_SOURCE = "HttpTrigger1";
-        const string SPLUNK_SOURCE_TYPE = "TestDataBase";
-        const string SPLUNK_INDEX = "apps-sandbox-dev_techsvc-sdg";
-
         public override void Configure(IFunctionsHostBuilder builder)
         {
+          try {
+            // sleep
+            // System.Threading.Thread.Sleep(4000);
+            Console.WriteLine("[DEBUG] [Startup.Configure] Running startup.");
 
-            IConfigurationRoot configuration = new ConfigurationBuilder()
+            // Get the original configuration provider from the Azure Function
+            var configProvider = builder.Services.BuildServiceProvider().GetService<IConfiguration>();
+            IConfigurationRoot config = new ConfigurationBuilder()
                 .SetBasePath(Environment.CurrentDirectory)
+                .AddConfiguration(configProvider) // Add the original function configuration 
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
                 .Build();
-            
+
+            builder.Services.AddSingleton(config);
             builder.Services.AddLogging(logBuilder => logBuilder
-                // .ClearProviders() // Generates error: Value cannot be null. (Parameter 'provider')
-                .AddSerilog(Serilogger.Create(SPLUNK_ENDPOINT, SPLUNK_HEC_TOKEN, 
-                    SPLUNK_LOG_LEVEL, CONSOLE_TEMPLATE, SPLUNK_URI_PATH, SPLUNK_SOURCE,
-                    SPLUNK_SOURCE_TYPE, SPLUNK_INDEX), true));
-     
+              .AddSerilog(Serilogger.Create(config), true)
+            );
+            // todo clear providers...?
+
+           } catch (Exception e) {
+            // Manually log error to console since logger code failed to initialize
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.Error.WriteLine($"[DEBUG] [Startup.Configure] Error: {e.Message}");
+            Console.Error.WriteLine(e.StackTrace);
+            Console.ResetColor();
+            // Propogate
+            throw e;
+          }
+    
         }
     }
 }
