@@ -243,6 +243,7 @@ using System.Data.SqlClient; // Used for Any SQL Connections
 using System.Runtime.Serialization; // Used for DataContracts data definitions
 using System.Runtime.Serialization.Json; // Used for DataContract serializer
 
+using Microsoft.Extensions.Configuration;
 using System.Security.Claims; //Used to get the data identity
 
 using JsonTools; // pull in custom class for conversting JSON
@@ -252,6 +253,13 @@ namespace My.Function
 {
     public class HttpTrigger1
     {
+        [FunctionName("debug")]
+        public static async Task<IActionResult> debug(
+            [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = "debug")] HttpRequest req
+        ) {
+            string responseMessage = ("Test response");
+            return new OkObjectResult(responseMessage);
+        }
         [FunctionName("getOptions")]
         public static async Task<IActionResult> getOptions(
             // 6. Authorization settings for at the function app and function level.
