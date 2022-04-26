@@ -4,9 +4,34 @@ using System.Linq;
 using System.Data;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
+using System.Threading;
+using Newtonsoft.Json;
 
 namespace JsonTools
 {
+    /// <summary>
+    /// Trim spaces
+    /// </summary>
+    public class TrimmingConverter : JsonConverter
+    {
+        public override bool CanRead => true;
+        public override bool CanWrite => true;
+
+        public override bool CanConvert(Type objectType) => objectType == typeof(string);
+
+        public override object ReadJson(JsonReader reader, Type objectType,
+                                        object existingValue, JsonSerializer serializer)
+        {
+            return ((string)reader.Value)?.Trim();
+        }
+
+        public override void WriteJson(JsonWriter writer, object value, 
+                                       JsonSerializer serializer)
+        {
+            writer.WriteValue(((string)value)?.Trim());
+        }
+    }
+    
     internal class Logger
     {
         private List<(Exception, string)> _messages;
@@ -43,6 +68,7 @@ namespace JsonTools
             _messages.Add(message);
         }
     }
+
     public static class TableTools
     {
         private const string ValidateTable = @"[^A-Z0-9@#$]";
@@ -113,6 +139,64 @@ namespace JsonTools
             }
 
             return "";
+        }
+
+        public static string DataTableToCsv(DataTable table, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            var JSONString = new StringBuilder();
+
+            if (table.Rows.Count > 0)
+            {
+                //headers
+                for (int i = 0; i < table.Columns.Count; i++) 
+                {
+                    JSONString.Append(table.Columns[i]);
+                    if (i < table.Columns.Count - 1)
+                        JSONString.Append(",");
+                }
+                JSONString.Append(Environment.NewLine);
+
+                foreach(DataRow dr in table.Rows)
+                {
+                    for (int i = 0; i < table.Columns.Count; i++)
+                    {
+                        if (!Convert.IsDBNull(dr[i]))
+                        {                            
+                            ReadOnlySpan<char> value = dr[i].ToString().Trim();
+                            ReadOnlySpan<char> quote = "\"";
+
+                            // example of unsafe high performance code where you directly access the memory
+                            // unsafe
+                            // {
+                            //     var s = new string('\0', value.Length + quote.Length*2);
+
+                            //     fixed (char* source1 = value)
+                            //     fixed (char* source2 = quote)
+                            //     fixed (char* target = s)
+                            //     {
+                            //         System.Runtime.CompilerServices.Unsafe.CopyBlock(target, source2, 1);
+                            //         System.Runtime.CompilerServices.Unsafe.CopyBlock(target + 1, source1, (uint)value.Length*sizeof(char));
+                            //         System.Runtime.CompilerServices.Unsafe.CopyBlock(target + (uint)(1 + value.Length), source2, 1);
+                            //     }
+                            
+                            //     return s;
+                            // }
+
+                            if (value.Contains<char>(','))
+                                JSONString.Append(quote)
+                                    .Append(value)
+                                    .Append(quote);
+                            else
+                                JSONString.Append(value);
+                        }
+                        if (i < table.Columns.Count - 1)
+                            JSONString.Append(",");
+                    }
+                    JSONString.Append(Environment.NewLine);
+                } 
+            }
+
+            return JSONString.ToString();
         }
 
         public static void logTable(DataTable dt, bool HeadersOnly = false)

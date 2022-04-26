@@ -9,12 +9,14 @@ using System.Data.SqlClient;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Xml;	
+using System.Xml.Linq;
+using Newtonsoft.Json;
 
 /*
     SQL server name: rickodb1.database.windows.net
     SQL Database Name: db1
-    SQL User: sqluser
-    SQL pwd: pswd1234!
+    SQL User: ddluser
 */
 
 /*
@@ -55,7 +57,7 @@ namespace JsonTools
         /// <summary>
         /// property <c>SQLConnection</c>: private property that is the SQL connection 
         /// </summary>
-        private SQLConnection sqlConnection;
+        public SQLConnection sqlConnection;
 
         private string _tableName;
 
@@ -122,15 +124,57 @@ namespace JsonTools
         }
 
         /// <summary>
-        ///  This class will establish a connection to the backend database and then execute 
-        ///  a bulk insert into the table.
+        ///  This is the constructor for a class that will establish a connection to the backend 
+        ///  database and then execute a bulk insert into the table.
+        /// </summary>
+        public SQLProcess()
+        {
+            setValues();
+            sqlConnection = new SQLConnection();
+        }
+
+        /// <summary>
+        ///  This is the constructor for a class that will establish a connection to the backend 
+        ///  database and then execute a bulk insert into the table.
         /// </summary>
         /// <param name="tableName">Contains the physical table that will be processed.</param>
         /// <param name="fieldMappings">This is a cross reference for mapping to backend SQL tables.</param>
         /// <param name="mergeOn">List of fields that will be used as criteria for merging records when 
         /// the merge function is used.</param>
         /// <param name="mergeFields">List of fields that will be updated or inserted into the target table.</param>
-        public SQLProcess(string tableName = null, Dictionary<string, string> fieldMappings = null,
+        public SQLProcess(string tableName, Dictionary<string, string> fieldMappings,
+            List <string> mergeOn = null, List<string> mergeFields = null)
+        {
+            setValues(tableName, fieldMappings, mergeOn, mergeFields);
+            sqlConnection = new SQLConnection();
+        }
+
+        /// <summary>
+        ///  This is the constructor for a class that will establish a connection to the backend 
+        ///  database and then execute a bulk insert into the table.
+        /// </summary>
+        /// <param name="envConnection">Specifies the environment variable that contains the 
+        ///  connection string for this ODBC connection</param>
+        /// <param name="envUser">Specifies the environment variable that contains the user name. This will
+        ///  replace the value {user} specified in the envConnection</param>
+        /// <param name="envPassword">Specifies the environment variable that contains the password. This will
+        ///  replace the value {password} specified in the envConnection</param>
+        /// <param name="tableName">Contains the physical table that will be processed.</param>
+        /// <param name="fieldMappings">This is a cross reference for mapping to backend SQL tables.</param>
+        /// <param name="mergeOn">List of fields that will be used as criteria for merging records when 
+        /// the merge function is used.</param>
+        /// <param name="mergeFields">List of fields that will be updated or inserted into the target table.</param>
+        public SQLProcess(string envConnection = null, string envUser = null, string envPassword = null,
+            string tableName = null, Dictionary<string, string> fieldMappings = null,
+            List <string> mergeOn = null, List<string> mergeFields = null
+            )
+        {
+            setValues(tableName, fieldMappings, mergeOn, mergeFields);
+            sqlConnection = new SQLConnection(envConnection, envUser, envPassword);
+        }
+
+
+        public void setValues(string tableName = null, Dictionary<string, string> fieldMappings = null,
             List <string> mergeOn = null, List<string> mergeFields = null)
         {
             logger = new Logger();
@@ -139,7 +183,6 @@ namespace JsonTools
             _fieldMappings = fieldMappings;
             _mergeOn = mergeOn;
             _mergeFields = mergeFields;
-            sqlConnection = new SQLConnection();
         }
 
         /// <summary>
@@ -150,7 +193,7 @@ namespace JsonTools
         ///  is supported.</param>
         /// <param name="log">Optional parm that specifies a logger that will generate logs for any
         ///  warnings or exceptions encountered</param>
-        async public Task<int> bulkUpoad(Stream fs, 
+        async public Task<int> bulkInsert(Stream fs, 
             CancellationToken cancellationToken = default(CancellationToken))
         {
         	return await bulkInsert(fs, _tableName, _fieldMappings, 10000, 600, null, cancellationToken);
@@ -165,7 +208,7 @@ namespace JsonTools
         /// <param name="log">Optional parm that specifies a logger that will generate logs for any
         ///  warnings or exceptions encountered</param>
         /// <param name="cancellationToken">Optional parm that allows passing a cancellation token.</param>
-        async public Task<int> bulkUpoad(Stream fs, ILogger log = null,
+        async public Task<int> bulkInsert(Stream fs, ILogger log = null,
             CancellationToken cancellationToken = default(CancellationToken))
         {
         	return await bulkInsert(fs, _tableName, _fieldMappings, 10000, 600, log, cancellationToken);
@@ -184,7 +227,7 @@ namespace JsonTools
         /// <param name="log">Optional parm that specifies a logger that will generate logs for any
         ///  warnings or exceptions encountered</param>
         /// <param name="cancellationToken">Optional parm that allows passing a cancellation token.</param>
-        public async Task<int> bulkUpoad(Stream fs, int batch = 10000,
+        public async Task<int> bulkInsert(Stream fs, int batch = 10000,
             int timeOut = 600, ILogger log = null, 
             CancellationToken cancellationToken = default(CancellationToken))
         {   
@@ -205,7 +248,7 @@ namespace JsonTools
         /// <param name="log">Optional parm that specifies a logger that will generate logs for any
         ///  warnings or exceptions encountered</param>
         /// <param name="cancellationToken">Optional parm that allows passing a cancellation token.</param>
-        async public Task<int> bulkUpoad(Stream fs, string tableName, int batch = 10000,
+        async public Task<int> bulkInsert(Stream fs, string tableName, int batch = 10000,
             int timeOut = 600, ILogger log = null, 
             CancellationToken cancellationToken = default(CancellationToken))
         {
@@ -240,9 +283,10 @@ namespace JsonTools
                 }
                 catch (Exception e)
                 {
+                    cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
                     logger.add((e, $"SqlBulkCopy open Exception"));
                     log?.LogError(e, "SqlBulkCopy open Exception");
-                    cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
+
                     return -1;
                 }
 
@@ -310,13 +354,13 @@ namespace JsonTools
                             }
                             catch (Exception e)
                             {
+                                cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
                                 prevArrays = arrays;
                                 objBulk.ColumnMappings.Clear();
                                 int current = jsonConversions.currentCounter + jsonConversions.currentBlockCount;
 
                                 logger.add((e, $"SqlBulkCopy failed Exception (WriteToServerAsync): row {current}, Array {arrays}"));
                                 log?.LogError(e, "SqlBulkCopy failed Exception (WriteToServerAsync): row {current}, Array {arrays}", current, arrays);
-                                cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
                             }
                             finally 
                             {
@@ -329,18 +373,18 @@ namespace JsonTools
                         }
                         catch (Exception e)
                         {
+                            cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
                             logger.add((e, "SqlBulkCopy failed Exception (ColumnMappings): failed Exception"));
                             log?.LogError(e, "SqlBulkCopy failed Exception (ColumnMappings): failed Exception");
-                            cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
                         }
                     }
                 }
             }
             catch (Exception e)
             {
+                cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
                 logger.add((e, "SqlBulkCopy failed Exception (connnection): failed Exception"));
                 log?.LogError(e, "SqlBulkCopy failed Exception (connnection): failed Exception");
-                cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
             }
 
             return written;
@@ -437,13 +481,14 @@ namespace JsonTools
                     }
                     catch (Exception e)
                     {
+                        cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
                         logger.add((e, "bulkMerge open Exception"));
                         log?.LogError(e, "bulkMerge open Exception");
-                        cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
                     }
                 }
                 else
                 {
+                    cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
                     ArgumentException e = new ArgumentNullException("Argument List<string> null Exception");
                     logger.add((e, "Argument List<string>: mergeOn must contain at least one entry"));
                     log?.LogError(e, "Argument List<string>: mergeOn must contain at least one entry");
@@ -458,13 +503,14 @@ namespace JsonTools
         ///  <br /> The <c>table</c> is then inseted into the backend database.
         /// </summary>
         /// <param name="tableName">Contains the physical table that will be processed.</param>
-        /// <param name="table">This is an array of classes that is meant to</param>
+        /// <param name="table">This is an array of classes that contains the data that will be inserted into
+        /// the backend table. The example calling function uses a DataContract that permits the renaming of the
+        /// JSON fields.</param>
         /// <param name="log">Optional parm that specifies a logger that will generate logs for any
         ///  warnings or exceptions encountered</param>
         /// <param name="cancellationToken">Optional parm that allows passing a cancellation token.</param>
-
-        public async Task<int> putData(string tableName, object[] table, ILogger log, 
-            CancellationToken cancellationToken)
+        public async Task<int> putData(string tableName, object[] table, ILogger log = null, 
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             int cnt = -1;
 
@@ -500,12 +546,160 @@ namespace JsonTools
             }
             catch (Exception e)
             {
+                cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
                 logger.add((e, "putData: Error processing function."));
                 log?.LogError(e, "putData: Error processing function.");
-                cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
             }
 
             return cnt;
+        }
+
+        public async Task<string> getJsonTable(string query, Dictionary<string, object> prms = null, 
+            ILogger log = null, CancellationToken cancellationToken = default(CancellationToken),
+            Newtonsoft.Json.Formatting formatting = Newtonsoft.Json.Formatting.Indented, 
+            Boolean trimValues = true)
+        {
+            string result = "";
+
+            try
+            {
+                DataTable dt = await getDataTable(query, prms, log, cancellationToken);
+                if (trimValues)
+                    result = JsonConvert.SerializeObject(dt, formatting, new TrimmingConverter());
+                else
+                    result = JsonConvert.SerializeObject(dt, formatting);
+            }
+            catch (Exception e)
+            {
+                cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
+                logger.add((e, "getJsonTable: Error processing function."));
+                log?.LogError(e, "getJsonTable: Error processing function.");
+            }
+
+            return result;
+        }
+
+        public async Task<string> getCsvTable(string query, Dictionary<string, object> prms = null, 
+            ILogger log = null, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            string result = "";
+
+            try
+            {
+                DataTable dt = await getDataTable(query, prms, log, cancellationToken);
+                result = TableTools.DataTableToCsv(dt);
+            }
+            catch (Exception e)
+            {
+                cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
+                logger.add((e, "getCsvTable: Error processing function."));
+                log?.LogError(e, "getCsvTable: Error processing function.");
+            }
+            
+            return result;
+        }
+
+        public async Task<string> getXmlTable(string query, Dictionary<string, object> prms = null, 
+            ILogger log = null, CancellationToken cancellationToken = default(CancellationToken),
+            System.Xml.Formatting formatting = System.Xml.Formatting.Indented, Boolean trimValues = true)
+        {
+            string result = "";
+            StringBuilder res = new StringBuilder();
+            SaveOptions so = formatting == System.Xml.Formatting.Indented ? SaveOptions.None : SaveOptions.DisableFormatting;
+            var sts = new XmlWriterSettings();
+
+            if (formatting != System.Xml.Formatting.Indented)
+            {
+                sts.CloseOutput = true;
+                sts.Indent = true;
+            }
+            else
+            {
+                sts.CloseOutput = true;
+                sts.Indent = true;
+                sts.IndentChars = "";
+                sts.OmitXmlDeclaration = true;
+                sts.NewLineHandling = NewLineHandling.Entitize;
+                sts.NewLineOnAttributes = false;
+            }
+
+            try
+            {
+                DataTable dt = await getDataTable(query, prms, log, cancellationToken);
+
+                using (XmlWriter xmlWriter = XmlWriter.Create(res, sts))
+                    dt.WriteXml(xmlWriter);
+
+                result = res.ToString();
+                              
+                if (trimValues)
+                {
+                    try
+                    {
+                        XDocument xDoc = XDocument.Parse(result);
+                        var nodes = xDoc.Descendants().Where(x=>!x.Elements().Any());
+                        foreach(var node in nodes)
+                            node.Value = node.Value.Trim();                          
+                        
+                        result = xDoc.ToString(so);
+                    }
+                    catch (Exception e)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
+                        logger.add((e, "getXmlTable: Error processing function."));
+                        log?.LogError(e, "getXmlTable: Error processing function.");
+                    }
+                }
+
+            }
+            catch (Exception e)
+            {
+                cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
+                logger.add((e, "getXmlTable: Error processing function."));
+                log?.LogError(e, "getXmlTable: Error processing function.");
+            }
+
+            return result;
+        }
+
+        public async Task<DataTable> getDataTable(string query, Dictionary<string, object> fieldMappings = null, 
+            ILogger log = null, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            DataTable dt = new DataTable();
+            dt.TableName = (_tableName ?? "Table");
+
+            try
+            {
+                using (SqlConnection con = new SqlConnection(sqlConnection.connection))
+                {
+                    await con.OpenAsync(cancellationToken);
+                    SqlCommand command = new SqlCommand(query, con);
+
+                    foreach (KeyValuePair<string, dynamic> prm in fieldMappings)
+                    {
+                        try
+                        {
+                            command.Parameters.AddWithValue("@" + prm.Key, prm.Value);
+                        }
+                        catch (Exception e)
+                        {
+                            logger.add((e, "getDataTable: Error processing function."));
+                            log?.LogError(e, "getDataTable: Error processing function.");  
+                        }
+                    }
+
+                    using(var reader = command.ExecuteReaderAsync(cancellationToken).Result)
+                       dt.Load(reader);
+                }
+            }
+            catch (Exception e)
+            {
+                cancellationToken.ThrowIfCancellationRequested(); //If canceled throw an exception
+                logger.add((e, "getDataTable: Error processing function."));
+                log?.LogError(e, "getDataTable: Error processing function.");
+            }
+
+            return dt;
         }
     }
 }

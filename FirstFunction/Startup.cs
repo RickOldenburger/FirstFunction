@@ -7,15 +7,47 @@ using Microsoft.Azure.Functions.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Text;
+using System.IO;
 using Serilog;
 using CustomLogger;
+using SeriFailure;
 //using Microsoft.Extensions.Logging; //This does not work right now, needed for ClearProviders()
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 [assembly: FunctionsStartup(typeof(My.Function.Startup))]
 namespace My.Function
 {
     public class Startup : FunctionsStartup
     {
+        // public Startup(IConfiguration configuration)
+        // {
+        //   Configuration = configuration;
+        // }
+        // public IConfiguration Configuration { get; }
+        // public void ConfigureServices(IServiceCollection services)
+        // {
+        //     services.AddMvc(options =>
+        //     {
+        //         var policy = new AuthorizationPolicyBuilder()
+        //           .RequireAuthenticatedUser()
+        //           .Build();
+        //         options.Filters.Add(new AuthorizeFilter(policy));
+        //     });
+
+        //     services
+        //       .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+        //       .AddJwtBearer(options =>
+        //       {
+        //           options.Audience = Configuration["AzureAd:ClientId"];
+        //           options.Authority =
+        //             $"{Configuration["AzureAd:Instance"]}{Configuration["AzureAd:TenantId"]}";
+        //     });       
+        // }
+
         public override void Configure(IFunctionsHostBuilder builder)
         {
           try {
@@ -30,6 +62,14 @@ namespace My.Function
                 .AddConfiguration(configProvider) // Add the original function configuration 
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
                 .Build();
+
+            // bind the failed serilogger to a string builder
+            var messages = new StringBuilder();
+            Serilog.Debugging.SelfLog.Enable(new StringWriter(messages)); 
+            // Serilog.Debugging.SelfLog.Enable(msg => Console.WriteLine(msg)); // for testing to the console
+            // bind the logging of serifailures to a singleton
+            builder.Services.AddSingleton<ISeriFailed, SeriFailed>(sp => 
+            { return new SeriFailed(messages); });
 
             builder.Services.AddSingleton(config);
             builder.Services.AddLogging(logBuilder => logBuilder

@@ -2,6 +2,7 @@
     "version": "2.0",
     "logging": {
         "logLevel": {
+            "my.Function": "None",
             "default": "None",
             "Host.Results": "None",
             "Function.getOptions.User": "None",

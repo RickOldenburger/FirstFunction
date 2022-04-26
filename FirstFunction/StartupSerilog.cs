@@ -53,7 +53,6 @@ namespace CustomLogger
                     Console.WriteLine($"[INFO] [Serilogger.cs] Could not set value for {item.Key}. Skipping.");
                 }
             }
-
         }
     }
     public static class Serilogger

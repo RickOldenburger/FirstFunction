@@ -7,6 +7,23 @@ using Microsoft.Azure.WebJobs.Extensions.Http;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using System.Collections.Generic; //Used for lists and dictionaries
+using System.Linq; // add FirstOrDefault 
+using Microsoft.Extensions.Primitives; // Used for StringValues
+
+//using Microsoft.Azure.WebJobs.Extensions.Storage; // The training videos said this was needed for storage accounts
+using System.Text; // Used for Encoding to process byte streams for proecess 
+using System.Threading; // Used for the cancelation token
+using System.Data; // Used for the Datatable object to load records
+using System.Data.SqlClient; // Used for Any SQL Connections
+using System.Runtime.Serialization; // Used for DataContracts data definitions
+using System.Runtime.Serialization.Json; // Used for DataContract serializer
+
+using Microsoft.Extensions.Configuration;
+using System.Security.Claims; //Used to get the data identity
+
+using JsonTools; // pull in custom class for conversting JSON
+
 /*
  I. Setting up your environment
     - If you get the error "A host error has occurred during startup operation" you will nbeed to start the azure storage emulator.
@@ -129,8 +146,6 @@ III. Coding examples
     The password
 
     user:     sqluser
-    Password: pswd1234!
-
 
     6. Authorization settings for at the function app and function level.
     These keys can be sent via:
@@ -234,28 +249,22 @@ IV. Future settings
     https://github.com/Azure/azure-webjobs-sdk/tree/dev/src
 */
 
-using System.Collections.Generic; //Used for lists and dictionaries
-using System.Linq; // add FirstOrDefault 
-using Microsoft.Extensions.Primitives; // Used for StringValues
-
-//using Microsoft.Azure.WebJobs.Extensions.Storage; // The training videos said this was needed for storage accounts
-using System.Text; // Used for Encoding to process byte streams for proecess 
-using System.Threading; // Used for the cancelation token
-using System.Data; // Used for the Datatable object to load records
-using System.Data.SqlClient; // Used for Any SQL Connections
-using System.Runtime.Serialization; // Used for DataContracts data definitions
-using System.Runtime.Serialization.Json; // Used for DataContract serializer
-
-using Microsoft.Extensions.Configuration;
-using System.Security.Claims; //Used to get the data identity
-
-using JsonTools; // pull in custom class for conversting JSON
+using SeriFailure;
+using Security;
 
 #pragma warning disable CS1998
 namespace My.Function
 {
     public class HttpTrigger1
     {
+        private readonly ISeriFailed selfLogMessages;
+        private readonly ILogger<HttpTrigger1> logs;
+        public HttpTrigger1(ISeriFailed selfLogMessages, ILogger<HttpTrigger1> logs)
+        {
+            this.selfLogMessages = selfLogMessages;
+            this.logs = logs;
+        }
+
         [FunctionName("debug")]
         public static async Task<IActionResult> debug(
             [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = "debug")] HttpRequest req
@@ -263,18 +272,31 @@ namespace My.Function
             string responseMessage = ("Test response");
             return new OkObjectResult(responseMessage);
         }
+
+        // Returns all the supported options for the API
         [FunctionName("getOptions")]
-        public static async Task<IActionResult> getOptions(
+        public async Task<IActionResult> getOptions(
             // 6. Authorization settings for at the function app and function level.
-            [HttpTrigger(AuthorizationLevel.Function, "options", Route = "options/{test}")] HttpRequest req, 
+            [HttpTrigger(AuthorizationLevel.Function, "options", Route = "options/{test}")] HttpRequest req,
             string test,
             ILogger log
             )
         {
             log.LogInformation("Get options.");
 
-            string pt = Environment.CurrentDirectory;
-            log.LogInformation("Starting Serilog: {pt}", pt);
+            StringBuilder sb = selfLogMessages.Messages();
+            if (sb.Length > 0)
+            {
+                Console.WriteLine(sb.ToString());
+                sb.Clear();
+            }
+
+            //2. Code for interrogating the signed on account.
+            ClaimsPrincipal claimIdentity = req.HttpContext.User;
+            string user = (claimIdentity.Identity.Name ?? "anonymous");
+
+            //string pt = Environment.CurrentDirectory;
+            //log.LogInformation("Starting Serilog: {pt}", pt);
             
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
 
@@ -288,9 +310,88 @@ namespace My.Function
                 //return new BadRequestObjectResult($"Not Authorized: Header.Authorization != '{test}'");
             }
 
-            string result = "Access-Control-Allow-Methods: OPTIONS, POST, GET";
+            string result = string.Format("Access-Control-Allow-Methods: OPTIONS, POST, GET: {0}", user);
 
             string responseMessage = (result);
+            return new OkObjectResult(responseMessage);
+        }
+
+        [FunctionName("getBuilding")]
+        public async Task<IActionResult> getBuilding(
+            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "readBuilding{format}/{filterType}={name}")] HttpRequest req,
+            string format,
+            string filterType,
+            string name,
+            ILogger log
+            )
+        {
+            // Do we have access ?
+            //StringValues passedToken;
+            //const string tokenGroup = "APITOKEN";
+
+            //req.Headers.TryGetValue("Authorize", out passedToken);
+            //if (Authorized.IsAuthorized(tokenGroup, passedToken.FirstOrDefault("").Trim(), Authorized.Level.Read))
+            //{
+            //    log.LogError("Not Authorized: getBuilding");
+            //    return new UnauthorizedResult();
+            //}                
+
+            CancellationToken cancellationToken = req.HttpContext.RequestAborted;
+            SQLProcess sqlProcess = new SQLProcess();
+            Dictionary<string,object> prms = new Dictionary<string,object>();
+
+            // Determine how to format the response
+            try
+            {
+                sqlProcess.sqlConnection.SetConnect("ARCHIBUS_CONNECTION_TRUSTED");
+                format = format.ToUpper();
+                if (format != "CSV" && format != "XML")
+                    format = "JSON";
+
+                log.LogInformation($"get Buildings like: {name} format {format}");
+
+                prms.Add("name", "%" + name + "%");
+            }
+            catch (Exception e)
+            {
+                log.LogError(e, "getBuilding: failed to process parms");
+            }   
+
+            string query = 
+@"select * 
+from [FSAFM].[afm].[bl] a inner join [FSAFM].[afm].[rm] b on a.bl_id=b.bl_id
+where a.name like @name";
+
+            sqlProcess.tableName = "Building";
+
+            string responseMessage = "";
+            //string 
+            switch (format)
+            {
+                case "CSV":
+                    responseMessage = await sqlProcess.getCsvTable(query, prms, log, cancellationToken);
+                    break;
+                case "XML":
+                    responseMessage = await sqlProcess.getXmlTable(query, prms, log, cancellationToken);
+                    break;
+                default:
+                    responseMessage = await sqlProcess.getJsonTable(query, prms, log, cancellationToken);
+                    break;
+            }
+
+            StringBuilder sb = selfLogMessages.Messages();
+            if (sb.Length > 0)
+            {
+                Console.WriteLine(sb.ToString());
+                responseMessage += sb.ToString();
+                foreach ((Exception, string) val in sqlProcess.logger.getNextMessage())
+                {
+                    responseMessage += ((Exception)val.Item1).ToString() + ":" + ((Exception)val.Item1).Message + ":" + ((Exception)val.Item1).StackTrace;
+                }
+                
+                sb.Clear();
+            }
+
             return new OkObjectResult(responseMessage);
         }
 
@@ -358,6 +459,7 @@ namespace My.Function
             await Task.Run(() => getData(ref result, string.Empty, log));
 
             string responseMessage = ($"{user} : {result}");
+
             return new OkObjectResult(responseMessage);
         }
 
@@ -485,7 +587,7 @@ namespace My.Function
                     $"Current block: {currentBlockCount}, Current counter: {currentCounter}");
             else
                 return null;
-        }      
+        }
 
         [FunctionName("youtubeLinks")]
         public static async Task<IActionResult> PutNames(
@@ -618,7 +720,7 @@ namespace My.Function
                     SqlCommand command = new SqlCommand(query, connection);
                     command.Parameters.AddWithValue("@Name", name);
                     SqlDataAdapter da = new SqlDataAdapter(command);
-                    da.Fill(dt);
+                    //
                 }
             }
             catch (Exception e)
